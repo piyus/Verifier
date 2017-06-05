@@ -105,6 +105,7 @@ unsigned getX86SubSuperRegister(unsigned, unsigned, bool High=false);
 /// Like getX86SubSuperRegister() but returns 0 on error.
 unsigned getX86SubSuperRegisterOrZero(unsigned, unsigned,
                                       bool High = false);
+int getX86GPR(unsigned);
 
 } // End llvm namespace
 

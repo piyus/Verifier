@@ -23,6 +23,11 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/CodeGen/FaultMaps.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
+#include "llvm/MC/MCAnalysis/MCAtom.h"
+#include "llvm/MC/MCAnalysis/MCFunction.h"
+#include "llvm/MC/MCAnalysis/MCModule.h"
+#include "llvm/MC/MCAnalysis/MCModuleYAML.h"
+#include "llvm/MC/MCObjectDisassembler.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
@@ -55,6 +60,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -940,6 +946,122 @@ static bool getHidden(RelocationRef RelRef) {
   return false;
 }
 
+
+
+
+namespace llvm {
+	int getX86GPR(unsigned Reg);
+}
+
+// Write a graphviz file for the CFG inside an MCFunction.
+// FIXME: Use GraphWriter
+static void emitDOTFile(const char *FileName, const MCFunction &f,
+                        MCInstPrinter *IP, MCSubtargetInfo const &STI, 
+	                    MCInstrInfo const &MII, MCRegisterInfo const &MRI) {
+  // Start a new dot file.
+  //std::string Error;
+  std::error_code Error;
+  raw_fd_ostream Out(FileName, Error, sys::fs::F_Text);
+  outs() << "FILE: " << FileName << "\n";
+  outs() << f.getName() << "()\n";
+
+
+  if (Error) {
+	outs() << "ERROR:\n";
+    //errs() << "llvm-objdump: warning: " << Error << '\n';
+    return;
+  }
+
+  //Out << "digraph \"" << f.getName() << "\" {\n";
+  //Out << "graph [ rankdir = \"LR\" ];\n";
+  for (MCFunction::const_iterator i = f.begin(), e = f.end(); i != e; ++i) {
+    // Only print blocks that have predecessors.
+    bool hasPreds = (*i)->pred_begin() != (*i)->pred_end();
+
+    if (!hasPreds && i != f.begin())
+      continue;
+
+    //Out << '"' << (*i)->getInsts()->getBeginAddr() << "\" [ label=\"<a>";
+    // Print instructions.
+    for (unsigned ii = 0, ie = (*i)->getInsts()->size(); ii != ie;
+        ++ii) {
+      //if (ii != 0) // Not the first line, start a new row.
+        //Out << '|';
+      //if (ii + 1 == ie) // Last line, add an end id.
+        //Out << "<o>";
+	  MCInst MI = (*i)->getInsts()->at(ii).Inst;
+	  MCInstrDesc MD = MII.get(MI.getOpcode());
+	  const MCPhysReg *ImpUses = MD.getImplicitUses();
+	  const MCPhysReg *ImpDefs = MD.getImplicitDefs();
+	  MCOperand op;
+	  int reg;
+
+	  for (unsigned j = 0; j < MD.getNumImplicitDefs(); j++)
+	  {
+		  reg = llvm::getX86GPR(ImpDefs[j]);
+		  if (reg != -1)
+		  {
+			  Out << "ImpDef" << j << ": " << reg << "\n";
+		  }
+	  }
+
+	  for (unsigned j = 0; j < MD.getNumImplicitUses(); j++)
+	  {
+		  reg = llvm::getX86GPR(ImpUses[j]);
+		  if (reg != -1)
+		  {
+			  Out << "ImpUse" << j << ": " << reg << "\n";
+		  }
+	  }
+
+	  for (unsigned j = 0; j < MD.NumDefs; j++)
+	  {
+		  //Out << "DEF:" << j << "\n";
+		  op = MI.getOperand(j);
+		  if (op.isReg() && op.getReg())
+		  {
+			  reg = llvm::getX86GPR(op.getReg());
+			  if (reg != -1)
+			  {
+				  Out << "DEF REG" << j << ": " << reg << "\n";
+			  }
+		  }
+	  }
+
+	  for (unsigned j = MD.NumDefs; j < MI.getNumOperands(); j++)
+	  {
+		  op = MI.getOperand(j);
+		  if (op.isReg() && op.getReg())
+		  {
+			  reg = llvm::getX86GPR(op.getReg());
+			  if (reg != -1)
+			  {
+				  Out << "USE REG" << j << ": " << reg << "\n";
+			  }
+		  }
+	  }
+
+
+      // Escape special chars and print the instruction in mnemonic form.
+      std::string Str;
+	  raw_string_ostream OS(Str);
+      IP->printInst(&MI, OS, "", STI);
+      Out << DOT::EscapeString(OS.str());
+	  Out << "\n";
+    }
+    //Out << "\" shape=\"record\" ];\n";
+
+    // Add edges.
+    /*for (MCBasicBlock::succ_const_iterator si = (*i)->succ_begin(),
+        se = (*i)->succ_end(); si != se; ++si)
+      Out << (*i)->getInsts()->getBeginAddr() << ":o -> "
+          << (*si)->getInsts()->getBeginAddr() << ":a\n";*/
+  }
+  //Out << "}\n";
+}
+
+
+
 static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   const Target *TheTarget = getTarget(Obj);
 
@@ -985,6 +1107,92 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     report_fatal_error("error: no instruction printer for target " +
                        TripleName);
   IP->setPrintImmHex(PrintImmHex);
+
+
+//#if 0
+  if (1)
+  {
+	
+    std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
+    std::unique_ptr<MCModule> Mod(OD->buildModule(true /* withCFG  true*/));
+
+  /*  for (MCModule::const_func_iterator FI = Mod->func_begin(),
+                                       FE = Mod->func_end();
+                                       FI != FE; ++FI) {
+      static int filenum = 0;
+      emitDOTFile(("CFG_" + utostr(filenum) + ".dot").c_str(),
+                    **FI, IP.get(), *STI, *MII, *MRI);
+      ++filenum;
+    }*/
+
+
+/*
+    for (MCModule::const_atom_iterator AI = Mod->atom_begin(),
+                                       AE = Mod->atom_end();
+                                       AI != AE; ++AI) {
+      outs() << "Atom1 " << (*AI)->getName() << ": \n";
+      if (const MCTextAtom *TA = dyn_cast<MCTextAtom>(*AI)) {
+        for (MCTextAtom::const_iterator II = TA->begin(), IE = TA->end();
+             II != IE;
+             ++II) {
+		  //outs() << "INS: \n";
+          SmallVector<unsigned, 8> UsedRegs;
+		  const MCInst *inst = &II->Inst;
+		  MCInstrDesc desc =  MII->get(inst->getOpcode());
+		  const MCPhysReg *ImpUses = desc.getImplicitUses();
+		  const MCPhysReg *ImpDefs = desc.getImplicitDefs();
+
+		  for (unsigned i = 0; i < desc.getNumImplicitUses(); i++)
+		  {
+			  if (ImpUses[i] != 25)
+			  {
+			  	outs() << "\nimplicit use! " << ImpUses[i] << "\n";
+			  	IP->printRegName(outs(), ImpUses[i]);
+			  	outs() << "\n";
+			  }
+		  }
+
+		  for (unsigned i = 0; i < desc.getNumImplicitDefs(); i++)
+		  {
+			  if (ImpDefs[i] != 25)
+			  {
+			  	outs() << "\nimplicit def! " << ImpDefs[i] << "\n";
+			  	IP->printRegName(outs(), ImpDefs[i]);
+			  	outs() << "\n";
+			  }
+		  }
+
+
+		  for (unsigned i = 0; i < inst->getNumOperands(); i++)
+		  {
+		  	  const MCOperand op = inst->getOperand(i);
+			  if (op.isReg())
+			  {
+			  	unsigned regNum = MRI->getEncodingValue(op.getReg());
+			  	outs() << "\nOperand: " << i << " Reg:" << regNum << "\n";
+			  	op.print(outs());
+			 	outs() << "\n";
+			  	//IP->printRegName(outs(), regNum);
+		  	  	//IP->printOperand(inst, i, outs());
+			 	outs() << "\n";
+			  }
+		  }
+
+          IP->printInst(&II->Inst, outs(), "", *STI);
+		  outs() << "\n---END---\n";
+          //outs() << "\n";
+        }
+      }
+    }
+	*/
+	return;
+  }
+
+//#endif
+
+
+
+
   PrettyPrinter &PIP = selectPrettyPrinter(Triple(TripleName));
 
   StringRef Fmt = Obj->getBytesInAddress() > 4 ? "\t\t%016" PRIx64 ":  " :
@@ -997,7 +1205,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   for (const SectionRef &Section : ToolSectionFilter(*Obj)) {
     section_iterator Sec2 = Section.getRelocatedSection();
     if (Sec2 != Obj->section_end())
+	{
+	 // outs() << __FUNCTION__ << ":" << __LINE__ << " relocation section.\n";
       SectionRelocMap[*Sec2].push_back(Section);
+	}
   }
 
   // Create a mapping from virtual address to symbol name.  This is used to

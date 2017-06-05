@@ -9,6 +9,7 @@ set(LLVM_LINK_COMPONENTS
   MCDisassembler
   Object
   Support
+  MCAnalysis
   )
 
 add_llvm_tool(llvm-objdump
