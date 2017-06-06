@@ -149,18 +149,20 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
       uint64_t InstSize;
 	  bool foundFunc = false;
 	  uint64_t lastSeenBranch = 0;
+	  uint8_t tag = 0;
+	  const char *data = Contents.data();
       for (uint64_t Index = 0; Index < SecSize; Index += InstSize) {
         const uint64_t CurAddr = StartAddr + Index;
         MCInst Inst;
 		//outs() << "CurAddr:" << CurAddr << "\n";
 		//
-		ArrayRef<uint8_t> data = memoryObject.slice(Index);
 
-		if (*(uint64_t*)(data.data()) == 0x9A9A9A9A9A9A9A9A)
+		if (*(uint64_t*)(&data[Index]) == 0x9A9A9A9A9A9A9A9A)
 		{
 			foundFunc = true;
 			//outs() << "START of function\n";
 			InstSize = 16;
+			tag = data[Index+8];
 			/*if (!InvalidData)
 			{
 				Text = nullptr;
@@ -171,7 +173,7 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 			Text = nullptr;
 		}
 
-        else if (Dis.getInstruction(Inst, InstSize, data, CurAddr, nulls(),
+        else if (Dis.getInstruction(Inst, InstSize, memoryObject.slice(Index), CurAddr, nulls(),
                                nulls())) {
 
 			if (foundFunc)
@@ -181,6 +183,7 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 					//outs() << "Creating Text Atom@ "  << CurAddr << "\n";
 					Text = Module->createTextAtom(CurAddr, CurAddr + InstSize - 1);
 					Text->setName(SecName);
+					Text->setSignature(tag);
 				}
 				Text->addInst(Inst, InstSize);
 
@@ -231,7 +234,6 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 namespace {
   struct BBInfo;
   typedef SmallPtrSet<BBInfo*, 2> BBInfoSetTy;
-
   struct BBInfo {
     MCTextAtom *Atom;
     MCBasicBlock *BB;
@@ -277,8 +279,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
   assert(Module->func_begin() == Module->func_end()
          && "Module already has a CFG!");
 
-  int iter = 0;
-  // First, determine the basic block boundaries and call targets.
   for (MCModule::atom_iterator AI = Module->atom_begin(),
                                AE = Module->atom_end();
        AI != AE; ++AI) {
@@ -287,6 +287,18 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 
     Calls.push_back(TA->getBeginAddr());
     BBInfos[TA->getBeginAddr()].Atom = TA;
+  }
+
+
+
+  int iter = 0;
+  // First, determine the basic block boundaries and call targets.
+  for (MCModule::atom_iterator AI = Module->atom_begin(),
+                               AE = Module->atom_end();
+       AI != AE; ++AI) {
+    MCTextAtom *TA = dyn_cast<MCTextAtom>(*AI);
+    if (!TA) continue;
+
     for (MCTextAtom::const_iterator II = TA->begin(), IE = TA->end();
          II != IE; ++II) {
 	  MCAtom *A;
@@ -304,6 +316,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 				  continue;
 			  }
 			  Splits.push_back(II->Address + II->Size);
+			  printf("Adding target %llx to list!\n", II->Address + II->Size);
 		  }
 	  }
       uint64_t Target;
@@ -316,6 +329,11 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
         if (MIA.isCall(II->Inst))
 		{
           Calls.push_back(Target);
+          Splits.push_back(II->Address + II->Size);
+		}
+		else
+		{
+			printf("Adding target %llx to list!\n", Target);
 		}
         Splits.push_back(Target);
 
@@ -329,6 +347,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 
       }
     }
+	break;
   }
 
   RemoveDupsFromAddressVector(Splits);
@@ -344,10 +363,10 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 		continue;
 	}
 
-	if (iter ++ > 50000)
+	if (iter ++ > 2 /*10000*/)
 	{
-		printf("iteration is greater than 50000\n");
-		break;
+		//printf("iteration is greater than 10000\n");
+		//break;
 	}
 	//outs() << "ADDRESS: " << *SI << " Atom: " << A << "\n";
     MCTextAtom *TA = cast<MCTextAtom>(A);
@@ -368,14 +387,33 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
     if (!TA) continue;
     BBInfo &CurBB = BBInfos[TA->getBeginAddr()];
     const MCDecodedInst &LI = TA->back();
+
+	printf("LI Address:%llx\n", LI.Address);
+	if (MIA.isCall(LI.Inst))
+	{
+		printf("LI is Call\n");
+    	uint64_t Target;
+    	if (MIA.evaluateBranch(LI.Inst, LI.Address, LI.Size, Target))
+	  	{
+			MCTextAtom *CallA = BBInfos[Target].Atom;
+			assert(CallA && "call traget doesn't have an atom!");
+			outs() << "Adding tag to " << TA->getBeginAddr() << "\n";
+			//CurBB.setTag(CallA->getTag());
+			CurBB.Atom->setCallTag(CallA->getSignature());
+	  	}
+	}
+
     if (MIA.isBranch(LI.Inst)) {
       uint64_t Target;
       if (MIA.evaluateBranch(LI.Inst, LI.Address, LI.Size, Target))
         CurBB.addSucc(BBInfos[Target]);
       if (MIA.isConditionalBranch(LI.Inst))
         CurBB.addSucc(BBInfos[LI.Address + LI.Size]);
-    } else if (!MIA.isTerminator(LI.Inst))
+    }
+	else if (!MIA.isTerminator(LI.Inst))
+	{
       CurBB.addSucc(BBInfos[LI.Address + LI.Size]);
+	}
   }
 
 
@@ -396,6 +434,11 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
       if (!BBI->Atom)
         continue;
       BBI->BB = &MCFN.createBlock(*BBI->Atom);
+	  /*if (BBI->hasTag())
+	  {
+		  outs() << "MCBasicBlock adding tag " << BBI->BB->getInsts()->at(0).Address << "\n";
+		  BBI->BB->setTag(BBI->getTag());
+	  }*/
       // Add all predecessors and successors to the worklist.
       for (BBInfoSetTy::iterator SI = BBI->Succs.begin(), SE = BBI->Succs.end();
                                  SI != SE; ++SI)
@@ -576,12 +619,23 @@ MCBasicBlock *MCObjectDisassembler::getBBAt(MCModule *Module, MCFunction *MCFN,
     }
     // If there was none, we have to create one from the atom.
     BBI->BB = &MCFN->createBlock(*BBI->Atom);
+
+	/*if (BBI->hasTag())
+	{
+	    BBI->BB->setTag(BBI->getTag());
+	}*/
   }
 
   for (size_t wi = 0, we = Worklist.size(); wi != we; ++wi) {
     const uint64_t BeginAddr = Worklist[wi];
     BBInfo *BBI = &BBInfos[BeginAddr];
     MCBasicBlock *BB = BBI->BB;
+
+	/*if (BBI->hasTag())
+	{
+		assert(BB->hasTag());
+	    //BBI->BB->setTag(BBI->getTag());
+	}*/
 
     RemoveDupsFromAddressVector(BBI->SuccAddrs);
     for (AddressSetTy::const_iterator SI = BBI->SuccAddrs.begin(),

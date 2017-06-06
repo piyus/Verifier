@@ -121,6 +121,7 @@ public:
     : Inst(Inst), Address(Address), Size(Size) {}
 };
 
+#define CALL_TAG 0xf000
 /// \brief An atom consisting of disassembled instructions.
 class MCTextAtom : public MCAtom {
 private:
@@ -130,7 +131,52 @@ private:
   /// \brief The address of the next appended instruction, i.e., the
   /// address immediately after the last instruction in the atom.
   uint64_t NextInstAddress;
+  uint16_t CallTag;
+  uint16_t Signature;
+  uint16_t Input;
+  uint16_t Output;
+
 public:
+
+  void setSignature(uint8_t _tag)
+  {
+	  Signature = _tag | CALL_TAG;
+  }
+  uint8_t getSignature()
+  {
+	  assert(Signature & CALL_TAG);
+	  return (uint8_t)Signature;
+  }
+  void setCallTag(uint8_t _tag)
+  {
+	  CallTag = _tag | CALL_TAG;
+  }
+  const uint8_t & getCallTag()
+  const {
+	  assert(CallTag & CALL_TAG);
+	  return (uint8_t)CallTag;
+  }
+  const bool & hasCallTag()
+  const {
+	  return (CallTag & CALL_TAG) != 0;
+  }
+  void setInput(uint16_t in)
+  {
+	  Input = in;
+  }
+  void setOutput(uint16_t out)
+  {
+	  Output = out;
+  }
+  uint16_t getInput()
+  {
+	  return Input;
+  }
+  uint16_t getOutput()
+  {
+	  return Output;
+  }
+
   /// Append an instruction, expanding the atom if necessary.
   void addInst(const MCInst &Inst, uint64_t Size);
 
@@ -157,7 +203,7 @@ private:
   friend class MCModule;
   // Private constructor - only callable by MCModule
   MCTextAtom(MCModule *P, uint64_t Begin, uint64_t End)
-    : MCAtom(TextAtom, P, Begin, End), NextInstAddress(Begin) {}
+    : MCAtom(TextAtom, P, Begin, End), NextInstAddress(Begin), CallTag(0), Input(0), Output(0), Signature(0)  {}
 };
 /// @}
 

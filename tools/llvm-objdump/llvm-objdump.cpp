@@ -1040,8 +1040,20 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 			  }
 		  }
 	  }
-
-
+	  Out << "opcode: " << MI.getOpcode() << "\n";
+	  if (MI.getOpcode() == 409)
+	  {
+		  if (!(*i)->getInsts()->hasCallTag())
+		  {
+			  Out << " does not has Tag \n";
+			  outs() << "MCBasicBlock " << (*i)->getInsts()->at(0).Address << "\n";
+		  }
+		  else
+		  {
+			  //(*i)->getInsts()->getCallTag();
+			  Out << "Tag: " << (*i)->getInsts()->getCallTag() << "\n";
+		  }
+	  }
       // Escape special chars and print the instruction in mnemonic form.
       std::string Str;
 	  raw_string_ostream OS(Str);
@@ -1116,14 +1128,18 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
     std::unique_ptr<MCModule> Mod(OD->buildModule(true /* withCFG  true*/));
 
-  /*  for (MCModule::const_func_iterator FI = Mod->func_begin(),
+    for (MCModule::const_func_iterator FI = Mod->func_begin(),
                                        FE = Mod->func_end();
                                        FI != FE; ++FI) {
       static int filenum = 0;
       emitDOTFile(("CFG_" + utostr(filenum) + ".dot").c_str(),
                     **FI, IP.get(), *STI, *MII, *MRI);
       ++filenum;
-    }*/
+	  if (filenum > 100)
+	  {
+		  break;
+	  }
+    }
 
 
 /*
