@@ -1033,8 +1033,8 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 	  (r9Private << R9_SHIFT);
   MCTextAtom *TA = (MCTextAtom*)MBB->getInsts();
   TA->setInput(input);
-  uint16_t output;
   bool change;
+  int iter;
 
 
   //Out << "digraph \"" << f.getName() << "\" {\n";
@@ -1042,12 +1042,14 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
   
   do {
 	  change = false;
+	  iter = -1;
 	  for (MCFunction::const_iterator i = f.begin(), e = f.end(); i != e; ++i) {
 		  // Only print blocks that have predecessors.
 		  bool hasPreds = (*i)->pred_begin() != (*i)->pred_end();
 
 		  if (!hasPreds && i != f.begin())
 			  continue;
+		  iter++;
 
 		  uint16_t output = (*i)->getInsts()->getInput();
 
@@ -1061,8 +1063,9 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 			  const MCPhysReg *ImpDefs = MD.getImplicitDefs();
 			  MCOperand op;
 			  int reg;
-			  uint16_t use = 0, def = 0;
 			  bool isPublic = false, isPrivate = false, useIsPrivate = false, hasDefs = false;
+
+			  Out << "iter: " << iter << " output: " << output << "\n";
 
 			  for (unsigned j = 0; j < MD.getNumImplicitUses(); j++)
 			  {
@@ -1100,10 +1103,12 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 					  if (useIsPrivate || isPrivate)
 					  {
 						  output |= (1 << reg);
+						  Out << "Output is private: " << output << "\n";
 					  }
 					  else if (isPublic)
 					  {
 						  output &= ~(1 << reg);
+						  Out << "Output is public: " << output << "\n";
 					  }
 					  hasDefs = true;
 				  }
@@ -1122,10 +1127,12 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 						  if (useIsPrivate || isPrivate)
 						  {
 							  output |= (1 << reg);
+							  Out << "Output is private: " << output << "\n";
 						  }
 						  else if (isPublic)
 						  {
 							  output &= ~(1 << reg);
+							  Out << "Output is public: " << output << "\n";
 						  }
 						  hasDefs = true;
 					  }
@@ -1148,8 +1155,14 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 				  else
 				  {
 					  uint8_t callTag = (*i)->getInsts()->getCallTag();
-					  assert((callTag & getCallTag(output) & 0xf) == 0);
+					  Out << "callTag: " << callTag << " output: " << output << " GetCall: " << getCallTag(output) << "\n";
+					  //assert((callTag & getCallTag(output) & 0xf) == 0);
+					  if ((callTag & getCallTag(output) & 0xf) != 0)
+					  {
+						  Out << "Call assertion failed!\n";
+					  }
 					  output = afterCall(output, (callTag & 0x10) != 0);
+					  Out << "AfterCallOutput: " << output << "\n";
 				  }
 			  }
 			  // Escape special chars and print the instruction in mnemonic form.
@@ -1168,6 +1181,7 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 			  TA = (MCTextAtom*)(*si)->getInsts();
 			  uint16_t oldInput = TA->getInput();
 			  uint16_t newInput = output | oldInput;
+			  Out << "newInput: " << newInput << " oldInput: " << oldInput << " output: " << output << "\n";
 			  if (newInput != oldInput)
 			  {
 				  TA->setInput(newInput);
@@ -1242,7 +1256,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       emitDOTFile(("CFG_" + utostr(filenum) + ".dot").c_str(),
                     **FI, IP.get(), *STI, *MII, *MRI, *MIA);
       ++filenum;
-	  if (filenum > 100)
+	  if (filenum > 1)
 	  {
 		  break;
 	  }
