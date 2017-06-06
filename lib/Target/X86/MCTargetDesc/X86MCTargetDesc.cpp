@@ -453,8 +453,16 @@ unsigned llvm::getX86SubSuperRegister(unsigned Reg, unsigned Size, bool High) {
   return Res;
 }
 
-int llvm::getX86GPR(unsigned Reg)
+int llvm::getX86GPR(unsigned Reg, bool& isPublic, bool& isPrivate)
 {
+	if (Reg == X86::FS)
+	{
+		isPublic = true;
+	}
+	else if (Reg == X86::GS)
+	{
+		isPrivate = true;
+	}
 	unsigned Res = (int)getX86SubSuperRegisterOrZero(Reg, 64, false);
 	if (Res == 0)
 	{

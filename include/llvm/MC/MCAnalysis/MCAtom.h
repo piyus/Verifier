@@ -142,8 +142,8 @@ public:
   {
 	  Signature = _tag | CALL_TAG;
   }
-  uint8_t getSignature()
-  {
+  const uint8_t &getSignature()
+  const {
 	  assert(Signature & CALL_TAG);
 	  return (uint8_t)Signature;
   }
@@ -160,20 +160,20 @@ public:
   const {
 	  return (CallTag & CALL_TAG) != 0;
   }
-  void setInput(uint16_t in)
+  const void setInput(uint16_t in)
   {
 	  Input = in;
   }
-  void setOutput(uint16_t out)
+  const void setOutput(uint16_t out)
   {
 	  Output = out;
   }
-  uint16_t getInput()
-  {
+  const uint16_t &getInput()
+  const {
 	  return Input;
   }
-  uint16_t getOutput()
-  {
+  const uint16_t &getOutput()
+  const {
 	  return Output;
   }
 

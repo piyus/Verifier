@@ -950,14 +950,63 @@ static bool getHidden(RelocationRef RelRef) {
 
 
 namespace llvm {
-	int getX86GPR(unsigned Reg);
+	int getX86GPR(unsigned Reg, bool &pub, bool &priv);
+}
+
+enum {
+	RAX_SHIFT,
+	RCX_SHIFT,
+	RDX_SHIFT,
+	RBX_SHIFT,
+	RSP_SHIFT,
+	RBP_SHIFT,
+	RSI_SHIFT,
+	RDI_SHIFT,
+	R8_SHIFT,
+	R9_SHIFT,
+	R10_SHIFT,
+	R11_SHIFT,
+	R12_SHIFT,
+	R13_SHIFT,
+	R14_SHIFT,
+	R15_SHIFT,
+};
+
+
+static uint16_t getCallTag(uint16_t output)
+{
+	int rcx = (output >> RCX_SHIFT) & 1;
+	int rdx = (output >> RDX_SHIFT) & 1;
+	int r8 = (output >> R8_SHIFT) & 1;
+	int r9 = (output >> R9_SHIFT) & 1;
+	return (rcx | (rdx << 1) | (r8 << 2) | (r9 << 3));
+}
+
+static uint16_t afterCall(uint16_t output, int returnType)
+{
+	output |= (1 << RCX_SHIFT);
+	output |= (1 << RDX_SHIFT);
+	if (returnType)
+	{
+		output |= (1 << RAX_SHIFT);
+	}
+	else
+	{
+		output &= ~(1 << RAX_SHIFT);
+	}
+	output |= (1 << R8_SHIFT);
+	output |= (1 << R9_SHIFT);
+	output |= (1 << R11_SHIFT);
+	output |= (1 << R10_SHIFT);
+	return output;
 }
 
 // Write a graphviz file for the CFG inside an MCFunction.
 // FIXME: Use GraphWriter
 static void emitDOTFile(const char *FileName, const MCFunction &f,
                         MCInstPrinter *IP, MCSubtargetInfo const &STI, 
-	                    MCInstrInfo const &MII, MCRegisterInfo const &MRI) {
+	                    MCInstrInfo const &MII, MCRegisterInfo const &MRI,
+	                    MCInstrAnalysis const &MIA) {
   // Start a new dot file.
   //std::string Error;
   std::error_code Error;
@@ -972,103 +1021,161 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
     return;
   }
 
+  MCBasicBlock *MBB = (MCBasicBlock*)f.getEntryBlock();
+  uint8_t sig = MBB->getInsts()->getSignature();
+  int rcxPrivate = (sig & 1) == 0;
+  int rdxPrivate = (sig & 2) == 0;
+  int r8Private = (sig & 4) == 0;
+  int r9Private = (sig & 8) == 0;
+  uint16_t input = (rcxPrivate << RCX_SHIFT) |
+	  (rdxPrivate << RDX_SHIFT) |
+	  (r8Private << R8_SHIFT) |
+	  (r9Private << R9_SHIFT);
+  MCTextAtom *TA = (MCTextAtom*)MBB->getInsts();
+  TA->setInput(input);
+  uint16_t output;
+  bool change;
+
+
   //Out << "digraph \"" << f.getName() << "\" {\n";
   //Out << "graph [ rankdir = \"LR\" ];\n";
-  for (MCFunction::const_iterator i = f.begin(), e = f.end(); i != e; ++i) {
-    // Only print blocks that have predecessors.
-    bool hasPreds = (*i)->pred_begin() != (*i)->pred_end();
+  
+  do {
+	  change = false;
+	  for (MCFunction::const_iterator i = f.begin(), e = f.end(); i != e; ++i) {
+		  // Only print blocks that have predecessors.
+		  bool hasPreds = (*i)->pred_begin() != (*i)->pred_end();
 
-    if (!hasPreds && i != f.begin())
-      continue;
+		  if (!hasPreds && i != f.begin())
+			  continue;
 
-    //Out << '"' << (*i)->getInsts()->getBeginAddr() << "\" [ label=\"<a>";
-    // Print instructions.
-    for (unsigned ii = 0, ie = (*i)->getInsts()->size(); ii != ie;
-        ++ii) {
-      //if (ii != 0) // Not the first line, start a new row.
-        //Out << '|';
-      //if (ii + 1 == ie) // Last line, add an end id.
-        //Out << "<o>";
-	  MCInst MI = (*i)->getInsts()->at(ii).Inst;
-	  MCInstrDesc MD = MII.get(MI.getOpcode());
-	  const MCPhysReg *ImpUses = MD.getImplicitUses();
-	  const MCPhysReg *ImpDefs = MD.getImplicitDefs();
-	  MCOperand op;
-	  int reg;
+		  uint16_t output = (*i)->getInsts()->getInput();
 
-	  for (unsigned j = 0; j < MD.getNumImplicitDefs(); j++)
-	  {
-		  reg = llvm::getX86GPR(ImpDefs[j]);
-		  if (reg != -1)
-		  {
-			  Out << "ImpDef" << j << ": " << reg << "\n";
-		  }
-	  }
+		  //Out << '"' << (*i)->getInsts()->getBeginAddr() << "\" [ label=\"<a>";
+		  // Print instructions.
+		  for (unsigned ii = 0, ie = (*i)->getInsts()->size(); ii != ie;
+			  ++ii) {
+			  MCInst MI = (*i)->getInsts()->at(ii).Inst;
+			  MCInstrDesc MD = MII.get(MI.getOpcode());
+			  const MCPhysReg *ImpUses = MD.getImplicitUses();
+			  const MCPhysReg *ImpDefs = MD.getImplicitDefs();
+			  MCOperand op;
+			  int reg;
+			  uint16_t use = 0, def = 0;
+			  bool isPublic = false, isPrivate = false, useIsPrivate = false, hasDefs = false;
 
-	  for (unsigned j = 0; j < MD.getNumImplicitUses(); j++)
-	  {
-		  reg = llvm::getX86GPR(ImpUses[j]);
-		  if (reg != -1)
-		  {
-			  Out << "ImpUse" << j << ": " << reg << "\n";
-		  }
-	  }
-
-	  for (unsigned j = 0; j < MD.NumDefs; j++)
-	  {
-		  //Out << "DEF:" << j << "\n";
-		  op = MI.getOperand(j);
-		  if (op.isReg() && op.getReg())
-		  {
-			  reg = llvm::getX86GPR(op.getReg());
-			  if (reg != -1)
+			  for (unsigned j = 0; j < MD.getNumImplicitUses(); j++)
 			  {
-				  Out << "DEF REG" << j << ": " << reg << "\n";
+				  reg = llvm::getX86GPR(ImpUses[j], isPublic, isPrivate);
+				  if (reg != -1)
+				  {
+					  if (output & (1 << reg))
+					  {
+						  useIsPrivate = true;
+					  }
+				  }
+			  }
+
+			  for (unsigned j = MD.NumDefs; j < MI.getNumOperands(); j++)
+			  {
+				  op = MI.getOperand(j);
+				  if (op.isReg() && op.getReg())
+				  {
+					  reg = llvm::getX86GPR(op.getReg(), isPublic, isPrivate);
+					  if (reg != -1)
+					  {
+						  if (output & (1 << reg))
+						  {
+							  useIsPrivate = true;
+						  }
+					  }
+				  }
+			  }
+
+			  for (unsigned j = 0; j < MD.getNumImplicitDefs(); j++)
+			  {
+				  reg = llvm::getX86GPR(ImpDefs[j], isPublic, isPrivate);
+				  if (reg != -1)
+				  {
+					  if (useIsPrivate || isPrivate)
+					  {
+						  output |= (1 << reg);
+					  }
+					  else if (isPublic)
+					  {
+						  output &= ~(1 << reg);
+					  }
+					  hasDefs = true;
+				  }
+			  }
+
+			  
+
+			  for (unsigned j = 0; j < MD.NumDefs; j++)
+			  {
+				  op = MI.getOperand(j);
+				  if (op.isReg() && op.getReg())
+				  {
+					  reg = llvm::getX86GPR(op.getReg(), isPublic, isPrivate);
+					  if (reg != -1)
+					  {
+						  if (useIsPrivate || isPrivate)
+						  {
+							  output |= (1 << reg);
+						  }
+						  else if (isPublic)
+						  {
+							  output &= ~(1 << reg);
+						  }
+						  hasDefs = true;
+					  }
+				  }
+			  }
+
+			  if (!hasDefs)
+			  {
+				  // put some asserts maybe
+			  }
+			 
+
+			  if (MIA.isCall(MI))
+			  {
+				  if (MIA.isIndirectBranch(MI))
+				  {
+					  printf("indirect call is not supported!\n");
+					  return;
+				  }
+				  else
+				  {
+					  uint8_t callTag = (*i)->getInsts()->getCallTag();
+					  assert((callTag & getCallTag(output) & 0xf) == 0);
+					  output = afterCall(output, (callTag & 0x10) != 0);
+				  }
+			  }
+			  // Escape special chars and print the instruction in mnemonic form.
+			  std::string Str;
+			  raw_string_ostream OS(Str);
+			  IP->printInst(&MI, OS, "", STI);
+			  Out << DOT::EscapeString(OS.str());
+			  Out << "\n";
+		  }
+		  //Out << "\" shape=\"record\" ];\n";
+
+		  // Add edges.
+		  for (MCBasicBlock::succ_const_iterator si = (*i)->succ_begin(),
+			  se = (*i)->succ_end(); si != se; ++si)
+		  {
+			  TA = (MCTextAtom*)(*si)->getInsts();
+			  uint16_t oldInput = TA->getInput();
+			  uint16_t newInput = output | oldInput;
+			  if (newInput != oldInput)
+			  {
+				  TA->setInput(newInput);
+				  change = true;
 			  }
 		  }
 	  }
-
-	  for (unsigned j = MD.NumDefs; j < MI.getNumOperands(); j++)
-	  {
-		  op = MI.getOperand(j);
-		  if (op.isReg() && op.getReg())
-		  {
-			  reg = llvm::getX86GPR(op.getReg());
-			  if (reg != -1)
-			  {
-				  Out << "USE REG" << j << ": " << reg << "\n";
-			  }
-		  }
-	  }
-	  Out << "opcode: " << MI.getOpcode() << "\n";
-	  if (MI.getOpcode() == 409)
-	  {
-		  if (!(*i)->getInsts()->hasCallTag())
-		  {
-			  Out << " does not has Tag \n";
-			  outs() << "MCBasicBlock " << (*i)->getInsts()->at(0).Address << "\n";
-		  }
-		  else
-		  {
-			  //(*i)->getInsts()->getCallTag();
-			  Out << "Tag: " << (*i)->getInsts()->getCallTag() << "\n";
-		  }
-	  }
-      // Escape special chars and print the instruction in mnemonic form.
-      std::string Str;
-	  raw_string_ostream OS(Str);
-      IP->printInst(&MI, OS, "", STI);
-      Out << DOT::EscapeString(OS.str());
-	  Out << "\n";
-    }
-    //Out << "\" shape=\"record\" ];\n";
-
-    // Add edges.
-    /*for (MCBasicBlock::succ_const_iterator si = (*i)->succ_begin(),
-        se = (*i)->succ_end(); si != se; ++si)
-      Out << (*i)->getInsts()->getBeginAddr() << ":o -> "
-          << (*si)->getInsts()->getBeginAddr() << ":a\n";*/
-  }
+  } while (change);
   //Out << "}\n";
 }
 
@@ -1133,7 +1240,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
                                        FI != FE; ++FI) {
       static int filenum = 0;
       emitDOTFile(("CFG_" + utostr(filenum) + ".dot").c_str(),
-                    **FI, IP.get(), *STI, *MII, *MRI);
+                    **FI, IP.get(), *STI, *MII, *MRI, *MIA);
       ++filenum;
 	  if (filenum > 100)
 	  {

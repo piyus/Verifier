@@ -316,7 +316,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 				  continue;
 			  }
 			  Splits.push_back(II->Address + II->Size);
-			  printf("Adding target %llx to list!\n", II->Address + II->Size);
+			  //printf("Adding target %llx to list!\n", II->Address + II->Size);
 		  }
 	  }
       uint64_t Target;
@@ -331,10 +331,10 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
           Calls.push_back(Target);
           Splits.push_back(II->Address + II->Size);
 		}
-		else
+		/*else
 		{
 			printf("Adding target %llx to list!\n", Target);
-		}
+		}*/
         Splits.push_back(Target);
 
     	A = Module->findAtomContaining(Target);
@@ -388,10 +388,10 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
     BBInfo &CurBB = BBInfos[TA->getBeginAddr()];
     const MCDecodedInst &LI = TA->back();
 
-	printf("LI Address:%llx\n", LI.Address);
+	//printf("LI Address:%llx\n", LI.Address);
 	if (MIA.isCall(LI.Inst))
 	{
-		printf("LI is Call\n");
+		//printf("LI is Call\n");
     	uint64_t Target;
     	if (MIA.evaluateBranch(LI.Inst, LI.Address, LI.Size, Target))
 	  	{
