@@ -1192,7 +1192,7 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 				  	}
 					else
 					{
-						printf("Indirect call support comming soon!!\n");
+						Out << "Indirect call support comming soon!!\n";
 						return;
 					}
 				  }
@@ -1293,7 +1293,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       emitDOTFile(("CFG_" + utostr(filenum) + ".dot").c_str(),
                     **FI, IP.get(), *STI, *MII, *MRI, *MIA);
       ++filenum;
-	  if (filenum == 100)
+	  if (filenum == 1000)
 	  {
 		  break;
 	  }
