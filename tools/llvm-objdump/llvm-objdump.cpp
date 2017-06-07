@@ -1001,9 +1001,7 @@ static uint16_t afterCall(uint16_t output, int returnType)
 	return output;
 }
 
-// Write a graphviz file for the CFG inside an MCFunction.
-// FIXME: Use GraphWriter
-static void emitDOTFile(const char *FileName, const MCFunction &f,
+static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
                         MCInstPrinter *IP, MCSubtargetInfo const &STI, 
 	                    MCInstrInfo const &MII, MCRegisterInfo const &MRI,
 	                    MCInstrAnalysis const &MIA) {
@@ -1031,7 +1029,240 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
   uint16_t input = (rcxPrivate << RCX_SHIFT) |
 	  (rdxPrivate << RDX_SHIFT) |
 	  (r8Private << R8_SHIFT) |
-	  (r9Private << R9_SHIFT);
+	  (r9Private << R9_SHIFT) | 
+	  (1 << R10_SHIFT) |
+	  (1 << R11_SHIFT);
+  MCTextAtom *TA = (MCTextAtom*)MBB->getInsts();
+  TA->setInput(input);
+  bool change;
+  int iter;
+
+
+  do {
+	  change = false;
+	  iter = -1;
+	  for (MCFunction::const_iterator i = f.begin(), e = f.end(); i != e; ++i) {
+		  // Only print blocks that have predecessors.
+		  bool hasPreds = (*i)->pred_begin() != (*i)->pred_end();
+
+		  if (!hasPreds && i != f.begin())
+			  continue;
+
+		  if (!((*i)->getInsts()->hasInput()))
+			  continue;
+
+		  iter++;
+
+		  Out << "FUNCTION:" << (*i)->getInsts()->getBeginAddr() << "\n";
+
+		  uint16_t output = (*i)->getInsts()->getInput();
+
+		  // Print instructions.
+		  for (unsigned ii = 0, ie = (*i)->getInsts()->size(); ii != ie;
+			  ++ii) {
+			  MCInst MI = (*i)->getInsts()->at(ii).Inst;
+			  MCInstrDesc MD = MII.get(MI.getOpcode());
+			  const MCPhysReg *ImpUses = MD.getImplicitUses();
+			  const MCPhysReg *ImpDefs = MD.getImplicitDefs();
+			  MCOperand op;
+			  int reg;
+			  bool isPublic = false, isPrivate = false, useIsPrivate = false;
+			  bool isXorToItself = false;
+			  uint16_t opcode = MD.getOpcode();
+
+			  Out << "iter: " << iter << " output: " << output << "\n";
+			  //printf("iter:%d output:%x\n", iter, output);
+
+			  if (MD.isReturn() && returningPublic)
+			  {
+				  assert(((output >> RAX_SHIFT) & 1) == 0);
+			  }
+
+			  if (opcode == 0x396b || opcode == 0x3962 /*|| opcode == TargetOpcode::G_XOR*/)
+			  {
+				  assert(MI.getOperand(0).isReg() && MI.getOperand(1).isReg());
+				  isXorToItself = MI.getOperand(0).getReg() == MI.getOperand(1).getReg();
+			  }
+
+			  if (isXorToItself)
+			  {
+				  reg = llvm::getX86GPR(MI.getOperand(0).getReg(), isPublic, isPrivate);
+				  output &= ~(1 << reg);
+				  Out << "output: " << output << "\n";
+				  //printf("output %x is public\n", output);
+			  }
+			  else
+			  {
+				  for (unsigned j = 0; j < MD.getNumImplicitUses(); j++)
+				  {
+					  reg = llvm::getX86GPR(ImpUses[j], isPublic, isPrivate);
+					  if (reg != -1)
+					  {
+						  if (output & (1 << reg))
+						  {
+							  useIsPrivate = true;
+						  }
+					  }
+				  }
+
+				  for (unsigned j = MD.NumDefs; j < MI.getNumOperands(); j++)
+				  {
+					  op = MI.getOperand(j);
+					  if (op.isReg() && op.getReg())
+					  {
+						  reg = llvm::getX86GPR(op.getReg(), isPublic, isPrivate);
+						  if (reg != -1)
+						  {
+							  if (output & (1 << reg))
+							  {
+								  useIsPrivate = true;
+							  }
+						  }
+					  }
+				  }
+
+				  for (unsigned j = 0; j < MD.getNumImplicitDefs(); j++)
+				  {
+					  reg = llvm::getX86GPR(ImpDefs[j], isPublic, isPrivate);
+					  if (reg != -1)
+					  {
+						  if (useIsPrivate || isPrivate)
+						  {
+							  output |= (1 << reg);
+							  Out << "Output is private: " << output << "\n";
+							  //printf("output %x is private\n", output);
+						  }
+						  else /*if (isPublic)*/
+						  {
+							  output &= ~(1 << reg);
+							  Out << "Output is public: " << output << "\n";
+							  //printf("output %x is public\n", output);
+						  }
+					  }
+				  }
+
+
+
+				  for (unsigned j = 0; j < MD.NumDefs; j++)
+				  {
+					  op = MI.getOperand(j);
+					  if (op.isReg() && op.getReg())
+					  {
+						  reg = llvm::getX86GPR(op.getReg(), isPublic, isPrivate);
+						  if (reg != -1)
+						  {
+							  if (useIsPrivate || isPrivate)
+							  {
+								  output |= (1 << reg);
+								  Out << "Output is private: " << output << "\n";
+								  //printf("output %x is private\n", output);
+							  }
+							  else /*if (isPublic)*/
+							  {
+								  output &= ~(1 << reg);
+								  Out << "Output is public: " << output << "\n";
+								  //printf("output %x is public\n", output);
+							  }
+						  }
+					  }
+				  }
+
+				  assert(!isPublic || !useIsPrivate);
+
+				  if (MD.isCall())
+				  {
+				  	if (MD.getOpcode() == 0x199) // direct call
+				  	{
+
+				  	    uint8_t callTag = (*i)->getInsts()->getCallTag();
+				  	    Out << "callTag: " << (unsigned)callTag << " output: " << output << 
+							" GetCall: " << (unsigned)getCallTag(output) << "\n";
+				  	    //printf("callTag:%hhx getCallTag:%hhx output:%hx\n", callTag, getCallTag(output), output);
+				  	    //assert((callTag & getCallTag(output) & 0xf) == 0);
+				  	    if ((callTag & getCallTag(output) & 0xf) != 0)
+				  	    {
+				  	        Out << "Call assertion failed!\n";
+				  	        //printf("Call assertion failed!\n");
+				  	    }
+				  	    output = afterCall(output, (callTag & 0x10) != 0);
+				  	    Out << "AfterCallOutput: " << output << "\n";
+				  	    //printf("AfterCallOutput:%hx\n", output);
+				  	}
+					else
+					{
+						Out << "Indirect call support comming soon!!\n";
+						return;
+					}
+				  }
+			  }
+			  // Escape special chars and print the instruction in mnemonic form.
+			  std::string Str;
+			  raw_string_ostream OS(Str);
+			  IP->printInst(&MI, OS, "", STI);
+			  Out << DOT::EscapeString(OS.str());
+			  Out << "\n";
+			  /*printf("%s   MayLoad:%d MayStore:%d Opcode:%x\n", 
+				  OS.str().c_str(), MD.mayLoad(), MD.mayStore(), MD.getOpcode());*/
+		  }
+		  //Out << "\" shape=\"record\" ];\n";
+
+		  // Add edges.
+		  for (MCBasicBlock::succ_const_iterator si = (*i)->succ_begin(),
+			  se = (*i)->succ_end(); si != se; ++si)
+		  {
+			  TA = (MCTextAtom*)(*si)->getInsts();
+			  uint16_t oldInput = !(TA->hasInput()) ? 0 : TA->getInput();
+			  uint16_t newInput = output | oldInput;
+			  //Out << "newInput: " << newInput << " oldInput: " << oldInput << " output: " << output << "\n";
+			  //printf("newInput:%hx oldInput:%hx output:%hx\n", newInput, oldInput, output);
+			  if (newInput != oldInput)
+			  {
+				  TA->setInput(newInput);
+				  change = true;
+			  }
+		  }
+	  }
+  } while (change);
+  //Out << "}\n";
+}
+
+
+
+
+
+// Write a graphviz file for the CFG inside an MCFunction.
+// FIXME: Use GraphWriter
+static int emitDOTFile(const char *FileName, const MCFunction &f,
+                        MCInstPrinter *IP, MCSubtargetInfo const &STI, 
+	                    MCInstrInfo const &MII, MCRegisterInfo const &MRI,
+	                    MCInstrAnalysis const &MIA) {
+  // Start a new dot file.
+  //std::string Error;
+  std::error_code Error;
+  raw_fd_ostream Out(FileName, Error, sys::fs::F_Text);
+  //outs() << "FILE: " << FileName << "\n";
+  //outs() << f.getName() << "()\n";
+
+
+  if (Error) {
+	outs() << "ERROR:\n";
+    //errs() << "llvm-objdump: warning: " << Error << '\n';
+    return 1;
+  }
+
+  MCBasicBlock *MBB = (MCBasicBlock*)f.getEntryBlock();
+  uint8_t sig = MBB->getInsts()->getSignature();
+  int rcxPrivate = (sig & 8) == 0;
+  int rdxPrivate = (sig & 4) == 0;
+  int r8Private = (sig & 2) == 0;
+  int r9Private = (sig & 1) == 0;
+  int returningPublic = (sig & 0x10) == 0;
+  uint16_t input = (rcxPrivate << RCX_SHIFT) |
+	  (rdxPrivate << RDX_SHIFT) |
+	  (r8Private << R8_SHIFT) |
+	  (r9Private << R9_SHIFT) | 
+	  (1 << R10_SHIFT) |
+	  (1 << R11_SHIFT);
   MCTextAtom *TA = (MCTextAtom*)MBB->getInsts();
   TA->setInput(input);
   bool change;
@@ -1185,6 +1416,7 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 				  	    {
 				  	        //Out << "Call assertion failed!\n";
 				  	        printf("Call assertion failed!\n");
+							return 0;
 				  	    }
 				  	    output = afterCall(output, (callTag & 0x10) != 0);
 				  	    //Out << "AfterCallOutput: " << output << "\n";
@@ -1193,7 +1425,7 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 					else
 					{
 						Out << "Indirect call support comming soon!!\n";
-						return;
+						return 1;
 					}
 				  }
 			  }
@@ -1226,6 +1458,7 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 	  }
   } while (change);
   //Out << "}\n";
+  return 1;
 }
 
 
@@ -1284,14 +1517,20 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
     std::unique_ptr<MCModule> Mod(OD->buildModule(true /* withCFG  true*/));
 
+	int success = 0;
     for (MCModule::const_func_iterator FI = Mod->func_begin(),
                                        FE = Mod->func_end();
                                        FI != FE; ++FI) {
       static int filenum = 0;
 
 	  printf("filenum:%d\n", filenum);
-      emitDOTFile(("CFG_" + utostr(filenum) + ".dot").c_str(),
+      success = emitDOTFile(("CFG_" + utostr(filenum) + ".dot").c_str(),
                     **FI, IP.get(), *STI, *MII, *MRI, *MIA);
+	  if (!success)
+	  {
+      	emitDOTFileDebug(("debugCFG_" + utostr(filenum) + ".dot").c_str(),
+                    **FI, IP.get(), *STI, *MII, *MRI, *MIA);
+	  }
       ++filenum;
 	  if (filenum == 1000)
 	  {

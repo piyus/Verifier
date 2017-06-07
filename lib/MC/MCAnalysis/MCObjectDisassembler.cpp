@@ -180,6 +180,7 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 			{
 				uint64_t Target;
 				if (!Text) {
+					//printf("Creating Text Atom@: %llx\n", CurAddr);
 					//outs() << "Creating Text Atom@ "  << CurAddr << "\n";
 					Text = Module->createTextAtom(CurAddr, CurAddr + InstSize - 1);
 					Text->setName(SecName);
@@ -200,6 +201,7 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 					//printf("Return: CurAddr:%llx LastSeenBranch:%llx\n", CurAddr, lastSeenBranch);
 					if (CurAddr >= lastSeenBranch)
 					{
+						//printf("Ending Text Atom@: %llx\n", CurAddr);
 						foundFunc = false;
 						Text = nullptr;
 					}
