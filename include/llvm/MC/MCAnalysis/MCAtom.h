@@ -121,7 +121,8 @@ public:
     : Inst(Inst), Address(Address), Size(Size) {}
 };
 
-#define CALL_TAG 0xf000
+#define CALL_TAG  0xf000
+#define INPUT_TAG 0xf0000000
 /// \brief An atom consisting of disassembled instructions.
 class MCTextAtom : public MCAtom {
 private:
@@ -133,8 +134,7 @@ private:
   uint64_t NextInstAddress;
   uint16_t CallTag;
   uint16_t Signature;
-  uint16_t Input;
-  uint16_t Output;
+  uint32_t Input;
 
 public:
 
@@ -162,19 +162,16 @@ public:
   }
   const void setInput(uint16_t in)
   {
-	  Input = in;
-  }
-  const void setOutput(uint16_t out)
-  {
-	  Output = out;
+	  Input = (in | INPUT_TAG);
   }
   const uint16_t &getInput()
   const {
-	  return Input;
+	  assert(Input & INPUT_TAG);
+	  return (uint16_t)Input;
   }
-  const uint16_t &getOutput()
+  const bool &hasInput()
   const {
-	  return Output;
+	  return (Input & INPUT_TAG) != 0;
   }
 
   /// Append an instruction, expanding the atom if necessary.
@@ -203,7 +200,7 @@ private:
   friend class MCModule;
   // Private constructor - only callable by MCModule
   MCTextAtom(MCModule *P, uint64_t Begin, uint64_t End)
-    : MCAtom(TextAtom, P, Begin, End), NextInstAddress(Begin), CallTag(0), Input(0), Output(0), Signature(0)  {}
+    : MCAtom(TextAtom, P, Begin, End), NextInstAddress(Begin), CallTag(0), Input(0), Signature(0)  {}
 };
 /// @}
 

@@ -299,6 +299,10 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
     MCTextAtom *TA = dyn_cast<MCTextAtom>(*AI);
     if (!TA) continue;
 
+	if (iter ++ > 1000)
+	{
+		break;
+	}
     for (MCTextAtom::const_iterator II = TA->begin(), IE = TA->end();
          II != IE; ++II) {
 	  MCAtom *A;
@@ -347,7 +351,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 
       }
     }
-	break;
   }
 
   RemoveDupsFromAddressVector(Splits);
@@ -363,12 +366,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 		continue;
 	}
 
-	if (iter ++ > 2 /*10000*/)
-	{
-		//printf("iteration is greater than 10000\n");
-		//break;
-	}
-	//outs() << "ADDRESS: " << *SI << " Atom: " << A << "\n";
     MCTextAtom *TA = cast<MCTextAtom>(A);
     if (TA->getBeginAddr() == *SI)
       continue;
@@ -397,10 +394,14 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 	  	{
 			MCTextAtom *CallA = BBInfos[Target].Atom;
 			assert(CallA && "call traget doesn't have an atom!");
-			outs() << "Adding tag to " << TA->getBeginAddr() << "\n";
+			printf("Adding tag to %llx\n", TA->getBeginAddr());
 			//CurBB.setTag(CallA->getTag());
 			CurBB.Atom->setCallTag(CallA->getSignature());
 	  	}
+		else
+		{
+			printf("Not Adding tag to %llx\n", TA->getBeginAddr());
+		}
 	}
 
     if (MIA.isBranch(LI.Inst)) {
