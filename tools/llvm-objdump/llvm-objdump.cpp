@@ -1011,8 +1011,8 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
   //std::string Error;
   std::error_code Error;
   raw_fd_ostream Out(FileName, Error, sys::fs::F_Text);
-  outs() << "FILE: " << FileName << "\n";
-  outs() << f.getName() << "()\n";
+  //outs() << "FILE: " << FileName << "\n";
+  //outs() << f.getName() << "()\n";
 
 
   if (Error) {
@@ -1073,7 +1073,7 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 			  uint16_t opcode = MD.getOpcode();
 
 			  //Out << "iter: " << iter << " output: " << output << "\n";
-			  printf("iter:%d output:%x\n", iter, output);
+			  //printf("iter:%d output:%x\n", iter, output);
 
 			  if (MD.isReturn() && returningPublic)
 			  {
@@ -1090,7 +1090,7 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 			  {
 				  reg = llvm::getX86GPR(MI.getOperand(0).getReg(), isPublic, isPrivate);
 				  output &= ~(1 << reg);
-				  printf("output %x is public\n", output);
+				  //printf("output %x is public\n", output);
 			  }
 			  else
 			  {
@@ -1133,13 +1133,13 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 						  {
 							  output |= (1 << reg);
 							  //Out << "Output is private: " << output << "\n";
-							  printf("output %x is private\n", output);
+							  //printf("output %x is private\n", output);
 						  }
 						  else /*if (isPublic)*/
 						  {
 							  output &= ~(1 << reg);
 							  //Out << "Output is public: " << output << "\n";
-							  printf("output %x is public\n", output);
+							  //printf("output %x is public\n", output);
 						  }
 					  }
 				  }
@@ -1158,13 +1158,13 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 							  {
 								  output |= (1 << reg);
 								  //Out << "Output is private: " << output << "\n";
-								  printf("output %x is private\n", output);
+								  //printf("output %x is private\n", output);
 							  }
 							  else /*if (isPublic)*/
 							  {
 								  output &= ~(1 << reg);
 								  //Out << "Output is public: " << output << "\n";
-								  printf("output %x is public\n", output);
+								  //printf("output %x is public\n", output);
 							  }
 						  }
 					  }
@@ -1172,48 +1172,39 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 
 				  assert(!isPublic || !useIsPrivate);
 
-				  if (MD.getOpcode() == 0x199/*MD.isCall()*/)
+				  if (MD.isCall())
 				  {
-					  /*if (MD.isIndirectBranch())
-					  {
-						  printf("indirect call is not supported!\n");
-						  return;
-					  }
-					  else*/
-					  {
-//#if 0
-			  std::string Str;
-			  raw_string_ostream OS(Str);
-			  IP->printInst(&MI, OS, "", STI);
-			  //Out << DOT::EscapeString(OS.str());
-			  //Out << "\n";
-			  printf("%s   MayLoad:%d MayStore:%d Opcode:%x Begin:%llx\n", 
-				  OS.str().c_str(), MD.mayLoad(), MD.mayStore(), MD.getOpcode(), (*i)->getInsts()->getBeginAddr());
-//#endif
+				  	if (MD.getOpcode() == 0x199) // direct call
+				  	{
 
-						  uint8_t callTag = (*i)->getInsts()->getCallTag();
-						  //Out << "callTag: " << callTag << " output: " << output << " GetCall: " << getCallTag(output) << "\n";
-						  printf("callTag:%hhx getCallTag:%hhx output:%hx\n", callTag, getCallTag(output), output);
-						  //assert((callTag & getCallTag(output) & 0xf) == 0);
-						  if ((callTag & getCallTag(output) & 0xf) != 0)
-						  {
-							  //Out << "Call assertion failed!\n";
-							  printf("Call assertion failed!\n");
-						  }
-						  output = afterCall(output, (callTag & 0x10) != 0);
-						  //Out << "AfterCallOutput: " << output << "\n";
-						  printf("AfterCallOutput:%hx\n", output);
-					  }
+				  	    uint8_t callTag = (*i)->getInsts()->getCallTag();
+				  	    //Out << "callTag: " << callTag << " output: " << output << " GetCall: " << getCallTag(output) << "\n";
+				  	    //printf("callTag:%hhx getCallTag:%hhx output:%hx\n", callTag, getCallTag(output), output);
+				  	    //assert((callTag & getCallTag(output) & 0xf) == 0);
+				  	    if ((callTag & getCallTag(output) & 0xf) != 0)
+				  	    {
+				  	        //Out << "Call assertion failed!\n";
+				  	        printf("Call assertion failed!\n");
+				  	    }
+				  	    output = afterCall(output, (callTag & 0x10) != 0);
+				  	    //Out << "AfterCallOutput: " << output << "\n";
+				  	    //printf("AfterCallOutput:%hx\n", output);
+				  	}
+					else
+					{
+						printf("Indirect call support comming soon!!\n");
+						return;
+					}
 				  }
 			  }
 			  // Escape special chars and print the instruction in mnemonic form.
 			  std::string Str;
 			  raw_string_ostream OS(Str);
 			  IP->printInst(&MI, OS, "", STI);
-			  //Out << DOT::EscapeString(OS.str());
-			  //Out << "\n";
-			  printf("%s   MayLoad:%d MayStore:%d Opcode:%x\n", 
-				  OS.str().c_str(), MD.mayLoad(), MD.mayStore(), MD.getOpcode());
+			  Out << DOT::EscapeString(OS.str());
+			  Out << "\n";
+			  /*printf("%s   MayLoad:%d MayStore:%d Opcode:%x\n", 
+				  OS.str().c_str(), MD.mayLoad(), MD.mayStore(), MD.getOpcode());*/
 		  }
 		  //Out << "\" shape=\"record\" ];\n";
 
@@ -1225,7 +1216,7 @@ static void emitDOTFile(const char *FileName, const MCFunction &f,
 			  uint16_t oldInput = !(TA->hasInput()) ? 0 : TA->getInput();
 			  uint16_t newInput = output | oldInput;
 			  //Out << "newInput: " << newInput << " oldInput: " << oldInput << " output: " << output << "\n";
-			  printf("newInput:%hx oldInput:%hx output:%hx\n", newInput, oldInput, output);
+			  //printf("newInput:%hx oldInput:%hx output:%hx\n", newInput, oldInput, output);
 			  if (newInput != oldInput)
 			  {
 				  TA->setInput(newInput);

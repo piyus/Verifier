@@ -323,6 +323,10 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 			  //printf("Adding target %llx to list!\n", II->Address + II->Size);
 		  }
 	  }
+	  if (MIA.isCall(II->Inst))
+	  {
+		  Splits.push_back(II->Address + II->Size);
+	  }
       uint64_t Target;
       if (MIA.evaluateBranch(II->Inst, II->Address, II->Size, Target)) {
 		  //printf("Target: %llx\n", Target);
@@ -333,7 +337,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
         if (MIA.isCall(II->Inst))
 		{
           Calls.push_back(Target);
-          Splits.push_back(II->Address + II->Size);
 		}
 		/*else
 		{
@@ -394,7 +397,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 	  	{
 			MCTextAtom *CallA = BBInfos[Target].Atom;
 			assert(CallA && "call traget doesn't have an atom!");
-			printf("Adding tag to %llx\n", TA->getBeginAddr());
+			//printf("Adding tag to %llx\n", TA->getBeginAddr());
 			//CurBB.setTag(CallA->getTag());
 			CurBB.Atom->setCallTag(CallA->getSignature());
 	  	}
