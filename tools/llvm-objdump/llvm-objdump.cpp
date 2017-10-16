@@ -16,6 +16,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "X86GenInstrInfo.h"
 #include "llvm-objdump.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
@@ -1226,10 +1227,6 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
   //Out << "}\n";
 }
 
-
-
-
-
 // Write a graphviz file for the CFG inside an MCFunction.
 // FIXME: Use GraphWriter
 static int emitDOTFile(const char *FileName, const MCFunction &f,
@@ -1238,17 +1235,17 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 	                    MCInstrAnalysis const &MIA) {
   // Start a new dot file.
   //std::string Error;
-  std::error_code Error;
-  raw_fd_ostream Out(FileName, Error, sys::fs::F_Text);
+  //std::error_code Error;
+  //raw_fd_ostream Out(FileName, Error, sys::fs::F_Text);
   //outs() << "FILE: " << FileName << "\n";
   //outs() << f.getName() << "()\n";
 
 
-  if (Error) {
+  /*if (Error) {
 	outs() << "ERROR:\n";
     //errs() << "llvm-objdump: warning: " << Error << '\n';
     return 1;
-  }
+  }*/
 
   MCBasicBlock *MBB = (MCBasicBlock*)f.getEntryBlock();
   uint8_t sig = MBB->getInsts()->getSignature();
@@ -1292,7 +1289,8 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 		  //Out << '"' << (*i)->getInsts()->getBeginAddr() << "\" [ label=\"<a>";
 		  // Print instructions.
 		  for (unsigned ii = 0, ie = (*i)->getInsts()->size(); ii != ie;
-			  ++ii) {
+			  ++ii) 
+		  {
 			  MCInst MI = (*i)->getInsts()->at(ii).Inst;
 			  MCInstrDesc MD = MII.get(MI.getOpcode());
 			  const MCPhysReg *ImpUses = MD.getImplicitUses();
@@ -1311,7 +1309,10 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 				  assert(((output >> RAX_SHIFT) & 1) == 0);
 			  }
 
-			  if (opcode == 0x396b || opcode == 0x3962 /*|| opcode == TargetOpcode::G_XOR*/)
+			  if (opcode == X86::XOR8rr || 
+				  opcode == X86::XOR16rr || 
+				  opcode == X86::XOR32rr || 
+				  opcode == X86::XOR64rr)
 			  {
 				  assert(MI.getOperand(0).isReg() && MI.getOperand(1).isReg());
 				  isXorToItself = MI.getOperand(0).getReg() == MI.getOperand(1).getReg();
@@ -1321,12 +1322,9 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 			  {
 				  reg = llvm::getX86GPR(MI.getOperand(0).getReg(), isPublic, isPrivate);
 				  output &= ~(1 << reg);
-				  //printf("output %x is public\n", output);
 			  }
 			  else
 			  {
-
-
 				  for (unsigned j = 0; j < MD.getNumImplicitUses(); j++)
 				  {
 					  reg = llvm::getX86GPR(ImpUses[j], isPublic, isPrivate);
@@ -1363,14 +1361,10 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 						  if (useIsPrivate || isPrivate)
 						  {
 							  output |= (1 << reg);
-							  //Out << "Output is private: " << output << "\n";
-							  //printf("output %x is private\n", output);
 						  }
 						  else /*if (isPublic)*/
 						  {
 							  output &= ~(1 << reg);
-							  //Out << "Output is public: " << output << "\n";
-							  //printf("output %x is public\n", output);
 						  }
 					  }
 				  }
@@ -1388,14 +1382,10 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 							  if (useIsPrivate || isPrivate)
 							  {
 								  output |= (1 << reg);
-								  //Out << "Output is private: " << output << "\n";
-								  //printf("output %x is private\n", output);
 							  }
 							  else /*if (isPublic)*/
 							  {
 								  output &= ~(1 << reg);
-								  //Out << "Output is public: " << output << "\n";
-								  //printf("output %x is public\n", output);
 							  }
 						  }
 					  }
@@ -1405,7 +1395,7 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 
 				  if (MD.isCall())
 				  {
-				  	if (MD.getOpcode() == 0x199) // direct call
+				  	if (opcode == X86::CALL64pcrel32) // direct call
 				  	{
 
 				  	    uint8_t callTag = (*i)->getInsts()->getCallTag();
@@ -1424,17 +1414,19 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 				  	}
 					else
 					{
-						Out << "Indirect call support comming soon!!\n";
+						assert(opcode == X86::CALL64r);
+						//Out << "Indirect call support comming soon!!\n";
 						return 1;
 					}
 				  }
 			  }
+			  assert(opcode != X86::JMP64m && opcode != X86::JMP32m && opcode != X86::JMP16m);
 			  // Escape special chars and print the instruction in mnemonic form.
-			  std::string Str;
+			  /*std::string Str;
 			  raw_string_ostream OS(Str);
 			  IP->printInst(&MI, OS, "", STI);
 			  Out << DOT::EscapeString(OS.str());
-			  Out << "\n";
+			  Out << "\n";*/
 			  /*printf("%s   MayLoad:%d MayStore:%d Opcode:%x\n", 
 				  OS.str().c_str(), MD.mayLoad(), MD.mayStore(), MD.getOpcode());*/
 		  }
@@ -1518,11 +1510,12 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     std::unique_ptr<MCModule> Mod(OD->buildModule(true /* withCFG  true*/));
 
 	int success = 0;
+	int filenum = 0;
+
     for (MCModule::const_func_iterator FI = Mod->func_begin(),
                                        FE = Mod->func_end();
-                                       FI != FE; ++FI) {
-      static int filenum = 0;
-
+                                       FI != FE; ++FI)
+	{
 	  printf("filenum:%d\n", filenum);
       success = emitDOTFile(("CFG_" + utostr(filenum) + ".dot").c_str(),
                     **FI, IP.get(), *STI, *MII, *MRI, *MIA);
@@ -1537,67 +1530,6 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 		  break;
 	  }
     }
-
-
-/*
-    for (MCModule::const_atom_iterator AI = Mod->atom_begin(),
-                                       AE = Mod->atom_end();
-                                       AI != AE; ++AI) {
-      outs() << "Atom1 " << (*AI)->getName() << ": \n";
-      if (const MCTextAtom *TA = dyn_cast<MCTextAtom>(*AI)) {
-        for (MCTextAtom::const_iterator II = TA->begin(), IE = TA->end();
-             II != IE;
-             ++II) {
-		  //outs() << "INS: \n";
-          SmallVector<unsigned, 8> UsedRegs;
-		  const MCInst *inst = &II->Inst;
-		  MCInstrDesc desc =  MII->get(inst->getOpcode());
-		  const MCPhysReg *ImpUses = desc.getImplicitUses();
-		  const MCPhysReg *ImpDefs = desc.getImplicitDefs();
-
-		  for (unsigned i = 0; i < desc.getNumImplicitUses(); i++)
-		  {
-			  if (ImpUses[i] != 25)
-			  {
-			  	outs() << "\nimplicit use! " << ImpUses[i] << "\n";
-			  	IP->printRegName(outs(), ImpUses[i]);
-			  	outs() << "\n";
-			  }
-		  }
-
-		  for (unsigned i = 0; i < desc.getNumImplicitDefs(); i++)
-		  {
-			  if (ImpDefs[i] != 25)
-			  {
-			  	outs() << "\nimplicit def! " << ImpDefs[i] << "\n";
-			  	IP->printRegName(outs(), ImpDefs[i]);
-			  	outs() << "\n";
-			  }
-		  }
-
-
-		  for (unsigned i = 0; i < inst->getNumOperands(); i++)
-		  {
-		  	  const MCOperand op = inst->getOperand(i);
-			  if (op.isReg())
-			  {
-			  	unsigned regNum = MRI->getEncodingValue(op.getReg());
-			  	outs() << "\nOperand: " << i << " Reg:" << regNum << "\n";
-			  	op.print(outs());
-			 	outs() << "\n";
-			  	//IP->printRegName(outs(), regNum);
-		  	  	//IP->printOperand(inst, i, outs());
-			 	outs() << "\n";
-			  }
-		  }
-
-          IP->printInst(&II->Inst, outs(), "", *STI);
-		  outs() << "\n---END---\n";
-          //outs() << "\n";
-        }
-      }
-    }
-	*/
 	return;
   }
 

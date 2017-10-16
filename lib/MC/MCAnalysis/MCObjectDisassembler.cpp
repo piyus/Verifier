@@ -101,11 +101,13 @@ MCModule *MCObjectDisassembler::buildModule(bool withCFG) {
 }
 
 void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
-  for (const SectionRef &Section : Obj.sections()) {
+  for (const SectionRef &Section : Obj.sections()) 
+  {
     bool isText;
     isText = Section.isText();
     bool isData;
     isData = Section.isData();
+
     if (!isData && !isText)
 	{
       continue;
@@ -151,30 +153,22 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 	  uint64_t lastSeenBranch = 0;
 	  uint8_t tag = 0;
 	  const char *data = Contents.data();
-      for (uint64_t Index = 0; Index < SecSize; Index += InstSize) {
+      for (uint64_t Index = 0; Index < SecSize; Index += InstSize)
+	  {
         const uint64_t CurAddr = StartAddr + Index;
         MCInst Inst;
-		//outs() << "CurAddr:" << CurAddr << "\n";
-		//
 
 		if (*(uint64_t*)(&data[Index]) == 0x9A9A9A9A9A9A9A9A)
 		{
 			foundFunc = true;
-			//outs() << "START of function\n";
 			InstSize = 16;
 			tag = data[Index+8];
-			/*if (!InvalidData)
-			{
-				Text = nullptr;
-				InvalidData = Module->createDataAtom(CurAddr, CurAddr + InstSize - 1);
-			}
-			for (uint64_t I = 0; I < InstSize; ++I)
-				InvalidData->addData(Contents[Index + I]);*/
 			Text = nullptr;
 		}
 
         else if (Dis.getInstruction(Inst, InstSize, memoryObject.slice(Index), CurAddr, nulls(),
-                               nulls())) {
+                               nulls()))
+		{
 
 			if (foundFunc)
 			{
@@ -209,28 +203,15 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 				
 				InvalidData = nullptr;
 			}
-        } else {
-		  //outs() << "Not able to disassemble!" << InstSize << "\n";
+        } 
+		else
+		{
           assert(InstSize && "getInstruction() consumed no bytes");
-          /*if (!InvalidData)
-		  {
-            Text = nullptr;
-            InvalidData = Module->createDataAtom(CurAddr, CurAddr+InstSize - 1);
-          }
-          for (uint64_t I = 0; I < InstSize; ++I)
-            InvalidData->addData(Contents[Index+I]);*/
 		  Text = nullptr;
         }
-      }
-    }
-	/*else 
-	{
-      MCDataAtom *Data = Module->createDataAtom(StartAddr, EndAddr);
-      Data->setName(SecName);
-      for (uint64_t Index = 0; Index < SecSize; ++Index)
-        Data->addData(Contents[Index]);
-    }*/
-  }
+      } // end for loop
+    } // end if
+  } // end for
 }
 
 namespace {
