@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "X86GenInstrInfo.h"
 #include "llvm/MC/MCObjectDisassembler.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -153,19 +154,34 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 	  uint64_t lastSeenBranch = 0;
 	  uint8_t tag = 0;
 	  const char *data = Contents.data();
+	  bool lastInstWasCall = false;
+
+
       for (uint64_t Index = 0; Index < SecSize; Index += InstSize)
 	  {
         const uint64_t CurAddr = StartAddr + Index;
         MCInst Inst;
 
+
+		if (foundFunc && lastInstWasCall)
+		{
+			assert(Text);
+			assert(((uint64_t*)(&data[Index]))[0] == 0x9090909090909090);
+			Inst.setOpcode(0);
+			InstSize = 8;
+			Text->addInst(Inst, InstSize);
+			lastInstWasCall = false;
+			continue;
+		}
+
 		if (*(uint64_t*)(&data[Index]) == 0x9A9A9A9A9A9A9A9A)
 		{
 			foundFunc = true;
+			lastInstWasCall = false;
 			InstSize = 16;
 			tag = data[Index+8];
 			Text = nullptr;
 		}
-
         else if (Dis.getInstruction(Inst, InstSize, memoryObject.slice(Index), CurAddr, nulls(),
                                nulls()))
 		{
@@ -190,7 +206,9 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 					}
 				}
 
-				if (MIA.isReturn(Inst) || MIA.isUnconditionalBranch(Inst))
+				lastInstWasCall = MIA.isCall(Inst);
+
+				if (MIA.isReturn(Inst) || MIA.isUnconditionalBranch(Inst) || Inst.getOpcode() == X86::INT3)
 				{
 					//printf("Return: CurAddr:%llx LastSeenBranch:%llx\n", CurAddr, lastSeenBranch);
 					if (CurAddr >= lastSeenBranch)
@@ -386,7 +404,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 	  	}
 		else
 		{
-			printf("Not Adding tag to %llx\n", TA->getBeginAddr());
+			//printf("Not Adding tag to %llx\n", TA->getBeginAddr());
 		}
 	}
 

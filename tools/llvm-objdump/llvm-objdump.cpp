@@ -1501,11 +1501,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
                        TripleName);
   IP->setPrintImmHex(PrintImmHex);
 
-
 //#if 0
   if (1)
   {
-	
+
     std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
     std::unique_ptr<MCModule> Mod(OD->buildModule(true /* withCFG  true*/));
 
@@ -1524,8 +1523,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       	emitDOTFileDebug(("debugCFG_" + utostr(filenum) + ".dot").c_str(),
                     **FI, IP.get(), *STI, *MII, *MRI, *MIA);
 	  }
-      ++filenum;
-	  if (filenum == 1000)
+      //++filenum;
+	  //if (filenum == 1000)
 	  {
 		  break;
 	  }
