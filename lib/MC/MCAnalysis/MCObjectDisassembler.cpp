@@ -173,124 +173,135 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
     uint64_t EndAddr = StartAddr + SecSize - 1;
 	//outs() << "EndAddr: " << EndAddr << "\n";
 
-    if (isText)
+	if (isText)
 	{
-      MCTextAtom *Text = nullptr;
-      MCDataAtom *InvalidData = nullptr;
+		MCTextAtom *Text = nullptr;
+		MCDataAtom *InvalidData = nullptr;
 
-      uint64_t InstSize;
-	  bool foundFunc = false;
-	  uint64_t lastSeenBranch = 0;
-	  uint8_t tag = 0;
-	  const char *data = Contents.data();
-	  bool lastInstWasCall = false;
-
-
-      for (uint64_t Index = 0; Index < SecSize; Index += InstSize)
-	  {
-        const uint64_t CurAddr = StartAddr + Index;
-        MCInst Inst;
+		uint64_t InstSize;
+		bool foundFunc = false;
+		uint64_t lastSeenBranch = 0;
+		uint8_t tag = 0;
+		const char *data = Contents.data();
+		bool lastInstWasCall = false;
 
 
-		if (foundFunc)
+		for (uint64_t Index = 0; Index < SecSize; Index += InstSize)
 		{
-			if (lastInstWasCall)
-			{
-				assert(Text);
-				assert(((uint64_t*)(&data[Index]))[0] == 0x9090909090909090);
-				//Inst.setOpcode(X86::CFI_INSTRUCTION);
-				Inst.setOpcode(X86::NOOP);
-				InstSize = 8;
-				Text->addInst(Inst, InstSize);
-				lastInstWasCall = false;
-				continue;
-			}
-			if (IsIndirectRet((const uint8_t*)&data[Index]))
-			{
-				Inst.setOpcode(X86::RET);
-				InstSize = sizeof(PublicRetCfiVal) - 1;
-				Text->addInst(Inst, InstSize);
-				continue;
-			}
-		}
+			const uint64_t CurAddr = StartAddr + Index;
+			MCInst Inst;
 
-		if (*(uint64_t*)(&data[Index]) == 0x9A9A9A9A9A9A9A9A)
-		{
-			foundFunc = true;
-			lastInstWasCall = false;
-			InstSize = 16;
-			tag = data[Index+8];
-			Text = nullptr;
-		}
-        else if (Dis.getInstruction(Inst, InstSize, memoryObject.slice(Index), CurAddr, nulls(),
-                               nulls()))
-		{
 
 			if (foundFunc)
 			{
-				uint64_t Target;
-				if (!Text) {
-					//printf("Creating Text Atom@: %llx\n", CurAddr);
-					//outs() << "Creating Text Atom@ "  << CurAddr << "\n";
-					Text = Module->createTextAtom(CurAddr, CurAddr + InstSize - 1);
-					Text->setName(SecName);
-					Text->setSignature(tag);
-				}
-				Text->addInst(Inst, InstSize);
-
-				if (!MIA.isCall(Inst) && MIA.evaluateBranch(Inst, CurAddr, InstSize, Target))
-				{
-					if (lastSeenBranch < Target)
-					{
-						lastSeenBranch = Target;
-					}
-				}
-
-				lastInstWasCall = MIA.isCall(Inst);
-
 				if (lastInstWasCall)
 				{
-					assert(Inst.getOpcode() == X86::CALL64pcrel32 || Inst.getOpcode() == X86::CALL64r);
+					assert(Text);
+					assert(((uint64_t*)(&data[Index]))[0] == 0x9090909090909090);
+					Inst.setOpcode(X86::CFI_INSTRUCTION);
+					InstSize = 8;
+					Text->addInst(Inst, InstSize);
+					lastInstWasCall = false;
+					continue;
 				}
-
-				if (MIA.isIndirectBranch(Inst))
+				if (IsIndirectRet((const uint8_t*)&data[Index]))
 				{
-					/* if next instruction is ret it is a stub*/
-					/* FIXME */
-					if ((uint8_t)data[Index + InstSize] != 0xC3)
+					Inst.setOpcode(X86::RET);
+					InstSize = sizeof(PublicRetCfiVal) - 1;
+					Text->addInst(Inst, InstSize);
+					continue;
+				}
+			}
+
+			if (*(uint64_t*)(&data[Index]) == 0x9A9A9A9A9A9A9A9A)
+			{
+				//printf("start func:%llx\n", CurAddr);
+				foundFunc = true;
+				lastInstWasCall = false;
+				InstSize = 16;
+				tag = data[Index + 8];
+				Text = nullptr;
+			}
+			else
+			{
+				if (!foundFunc)
+				{
+					InstSize = 1;
+				}
+				else if (Dis.getInstruction(Inst, InstSize, memoryObject.slice(Index), CurAddr, nulls(),
+					nulls()))
+				{
+
+					if (foundFunc)
 					{
-						printf("inst: %hhx InstSize:%zd addr:%llx\n", data[Index + InstSize], InstSize, CurAddr);
+						uint64_t Target;
+						if (!Text) {
+							//printf("Creating Text Atom@: %llx\n", CurAddr);
+							//outs() << "Creating Text Atom@ "  << CurAddr << "\n";
+							Text = Module->createTextAtom(CurAddr, CurAddr + InstSize - 1);
+							Text->setName(SecName);
+							Text->setSignature(tag);
+						}
+						Text->addInst(Inst, InstSize);
+
+						if (!MIA.isCall(Inst) && MIA.evaluateBranch(Inst, CurAddr, InstSize, Target))
+						{
+							if (lastSeenBranch < Target)
+							{
+								lastSeenBranch = Target;
+							}
+						}
+
+						lastInstWasCall = MIA.isCall(Inst);
+
+						if (lastInstWasCall)
+						{
+							assert(Inst.getOpcode() == X86::CALL64pcrel32 || Inst.getOpcode() == X86::CALL64r);
+						}
+
+						if (MIA.isIndirectBranch(Inst))
+						{
+							/* if next instruction is ret it is a stub*/
+							/* FIXME */
+							if ((uint8_t)data[Index + InstSize] != 0xC3)
+							{
+								printf("inst: %hhx InstSize:%zd addr:%llx\n", data[Index + InstSize], InstSize, CurAddr);
+							}
+							assert((uint8_t)data[Index + InstSize] == 0xC3);
+							assert(CurAddr >= lastSeenBranch);
+							foundFunc = false;
+							Text = nullptr;
+
+					//		printf("end func:%llx\n", CurAddr);
+						}
+						else
+						{
+							assert(!MIA.isReturn(Inst));
+							if (MIA.isUnconditionalBranch(Inst) || Inst.getOpcode() == X86::INT3)
+							{
+								//printf("Return: CurAddr:%llx LastSeenBranch:%llx\n", CurAddr, lastSeenBranch);
+								if (CurAddr >= lastSeenBranch)
+								{
+									//printf("Ending Text Atom@: %llx\n", CurAddr);
+									foundFunc = false;
+									Text = nullptr;
+
+						//			printf("end func:%llx\n", CurAddr);
+								}
+							}
+						}
+
+						InvalidData = nullptr;
 					}
-					assert((uint8_t)data[Index + InstSize] == 0xC3);
-					assert(CurAddr >= lastSeenBranch);
-					foundFunc = false;
-					Text = nullptr;
 				}
 				else
 				{
-					assert(!MIA.isReturn(Inst));
-					if (MIA.isUnconditionalBranch(Inst) || Inst.getOpcode() == X86::INT3)
-					{
-						//printf("Return: CurAddr:%llx LastSeenBranch:%llx\n", CurAddr, lastSeenBranch);
-						if (CurAddr >= lastSeenBranch)
-						{
-							//printf("Ending Text Atom@: %llx\n", CurAddr);
-							foundFunc = false;
-							Text = nullptr;
-						}
-					}
+					assert(InstSize && "getInstruction() consumed no bytes");
+					Text = nullptr;
 				}
-				
-				InvalidData = nullptr;
-			}
-        } 
-		else
-		{
-          assert(InstSize && "getInstruction() consumed no bytes");
-		  Text = nullptr;
-        }
-      } // end for loop
-    } // end if
+			} // end for loop
+		} // end if
+	}
   } // end for
 }
 

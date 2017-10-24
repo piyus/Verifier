@@ -989,6 +989,7 @@ static uint16_t afterCall(uint16_t output, int returnType)
 	output |= (1 << RDX_SHIFT);
 	if (returnType)
 	{
+		assert(0);
 		output |= (1 << RAX_SHIFT);
 	}
 	else
@@ -1227,6 +1228,40 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
   //Out << "}\n";
 }
 
+
+static uint8_t FetchIndirectCallTag(MCFunction::const_iterator i, unsigned reg,
+	MCInstPrinter *IP, MCSubtargetInfo const &STI)
+{
+	int numPred = 0;
+	for (MCBasicBlock::pred_const_iterator si = (*i)->pred_begin(),
+		se = (*i)->pred_end(); si != se; ++si)
+	{
+		unsigned numInsn = (*si)->getInsts()->size();
+		unsigned opcode;
+		//if (numInsn < 2)
+		{
+			//printf("numInsn:%d addr:%llx\n", numInsn, (*si)->getInsts()->getBeginAddr());
+		}
+		assert(numInsn >= 2);
+		MCInst MI = (*si)->getInsts()->at(numInsn - 2).Inst;
+		//std::string Str;
+		//raw_string_ostream OS(Str);
+
+		//IP->printInst(&MI, OS, "", STI);
+		//printf("\nopcode: %x  %s\n", MI.getOpcode(), OS.str().c_str());
+		assert(MI.getOpcode() == X86::TEST8mi);
+
+		MI = (*si)->getInsts()->at(numInsn - 1).Inst;
+		//IP->printInst(&MI, OS, "", STI);
+		opcode = MI.getOpcode();
+		//printf("\nopcode: %x  %s\n", opcode, OS.str().c_str());
+		assert(opcode == X86::JNE_4 || opcode == X86::JNE_1 || opcode == X86::JNE_2);
+		numPred++;
+	}
+	assert(numPred == 1);
+	return 0;
+}
+
 // Write a graphviz file for the CFG inside an MCFunction.
 // FIXME: Use GraphWriter
 static int emitDOTFile(const char *FileName, const MCFunction &f,
@@ -1254,6 +1289,7 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
   int r8Private = (sig & 2) == 0;
   int r9Private = (sig & 1) == 0;
   int returningPublic = (sig & 0x10) == 0;
+  assert(returningPublic == 1);
   uint16_t input = (rcxPrivate << RCX_SHIFT) |
 	  (rdxPrivate << RDX_SHIFT) |
 	  (r8Private << R8_SHIFT) |
@@ -1306,6 +1342,10 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 
 			  if (MD.isReturn() && returningPublic)
 			  {
+				  if (((output >> RAX_SHIFT) & 1))
+				  {
+					  printf("ADDR:%llx\n", (*i)->getInsts()->getBeginAddr());
+				  }
 				  assert(((output >> RAX_SHIFT) & 1) == 0);
 			  }
 
@@ -1414,8 +1454,9 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 				  	}
 					else
 					{
+						FetchIndirectCallTag(i, MI.getOperand(0).getReg(), IP, STI);
 						assert(opcode == X86::CALL64r);
-						//Out << "Indirect call support comming soon!!\n";
+						//printf("Indirect call support comming soon!!\n");
 						return 1;
 					}
 				  }
@@ -1510,21 +1551,22 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
 	int success = 0;
 	int filenum = 0;
+	printf("CFG construction done!\n");
 
     for (MCModule::const_func_iterator FI = Mod->func_begin(),
                                        FE = Mod->func_end();
                                        FI != FE; ++FI)
 	{
-	  printf("filenum:%d\n", filenum);
-      success = emitDOTFile(("CFG_" + utostr(filenum) + ".dot").c_str(),
+	  //printf("filenum:%d\n", filenum);
+      success = emitDOTFile(NULL,
                     **FI, IP.get(), *STI, *MII, *MRI, *MIA);
 	  if (!success)
 	  {
       	emitDOTFileDebug(("debugCFG_" + utostr(filenum) + ".dot").c_str(),
                     **FI, IP.get(), *STI, *MII, *MRI, *MIA);
 	  }
-      //++filenum;
-	  //if (filenum == 1000)
+      ++filenum;
+	  if (filenum == 1000)
 	  {
 		  break;
 	  }
