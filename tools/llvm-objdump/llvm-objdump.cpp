@@ -1071,6 +1071,7 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
 			  bool isPublic = false, isPrivate = false, useIsPrivate = false;
 			  bool isXorToItself = false;
 			  uint16_t opcode = MD.getOpcode();
+			  bool isSetA = MI.getOpcode() == X86::SETAr;
 
 			  Out << "iter: " << iter << " output: " << output << "\n";
 			  //printf("iter:%d output:%x\n", iter, output);
@@ -1098,8 +1099,13 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
 				  for (unsigned j = 0; j < MD.getNumImplicitUses(); j++)
 				  {
 					  reg = llvm::getX86GPR(ImpUses[j], isPublic, isPrivate);
+					 
 					  if (reg != -1)
 					  {
+						  if (isSetA)
+						  {
+							  printf("implicit use:%d\n", reg);
+						  }
 						  if (output & (1 << reg))
 						  {
 							  useIsPrivate = true;
@@ -1115,6 +1121,10 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
 						  reg = llvm::getX86GPR(op.getReg(), isPublic, isPrivate);
 						  if (reg != -1)
 						  {
+							  if (isSetA)
+							  {
+								  printf("defining:%d\n", reg);
+							  }
 							  if (output & (1 << reg))
 							  {
 								  useIsPrivate = true;
@@ -1128,16 +1138,21 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
 					  reg = llvm::getX86GPR(ImpDefs[j], isPublic, isPrivate);
 					  if (reg != -1)
 					  {
+						  if (isSetA)
+						  {
+							  printf("implicit use:%d isPublic:%d isPrivate:%d\n", 
+								  reg, isPublic, isPrivate);
+						  }
 						  if (useIsPrivate || isPrivate)
 						  {
 							  output |= (1 << reg);
-							  Out << "Output is private: " << output << "\n";
+							//  Out << "Output is private: " << output << "\n";
 							  //printf("output %x is private\n", output);
 						  }
 						  else /*if (isPublic)*/
 						  {
 							  output &= ~(1 << reg);
-							  Out << "Output is public: " << output << "\n";
+							  //Out << "Output is public: " << output << "\n";
 							  //printf("output %x is public\n", output);
 						  }
 					  }
@@ -1153,6 +1168,11 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
 						  reg = llvm::getX86GPR(op.getReg(), isPublic, isPrivate);
 						  if (reg != -1)
 						  {
+							  if (isSetA)
+							  {
+								  printf("define:%d isPublic:%d isPrivate:%d useIsPrivate:%d\n",
+									  reg, isPublic, isPrivate, useIsPrivate);
+							  }
 							  if (useIsPrivate || isPrivate)
 							  {
 								  output |= (1 << reg);
@@ -1321,7 +1341,7 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 		  iter++;
 
 		  uint16_t output = (*i)->getInsts()->getInput();
-
+		  bool isSetA = false;
 		  //Out << '"' << (*i)->getInsts()->getBeginAddr() << "\" [ label=\"<a>";
 		  // Print instructions.
 		  for (unsigned ii = 0, ie = (*i)->getInsts()->size(); ii != ie;
@@ -1336,6 +1356,7 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 			  bool isPublic = false, isPrivate = false, useIsPrivate = false;
 			  bool isXorToItself = false;
 			  uint16_t opcode = MD.getOpcode();
+			  //isSetA |= (MI.getOpcode() == X86::SETAr);
 
 			  //Out << "iter: " << iter << " output: " << output << "\n";
 			  //printf("iter:%d output:%x\n", iter, output);
@@ -1352,7 +1373,11 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 			  if (opcode == X86::XOR8rr || 
 				  opcode == X86::XOR16rr || 
 				  opcode == X86::XOR32rr || 
-				  opcode == X86::XOR64rr)
+				  opcode == X86::XOR64rr ||
+				  opcode == X86::SBB16rr||
+				  opcode == X86::SBB8rr ||
+				  opcode == X86::SBB32rr ||
+				  opcode == X86::SBB64rr)
 			  {
 				  assert(MI.getOperand(0).isReg() && MI.getOperand(1).isReg());
 				  isXorToItself = MI.getOperand(0).getReg() == MI.getOperand(1).getReg();
@@ -1370,6 +1395,10 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 					  reg = llvm::getX86GPR(ImpUses[j], isPublic, isPrivate);
 					  if (reg != -1)
 					  {
+						  if (isSetA)
+						  {
+							  printf("implicit use:%d output:%x\n", reg, output);
+						  }
 						  if (output & (1 << reg))
 						  {
 							  useIsPrivate = true;
@@ -1385,6 +1414,10 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 						  reg = llvm::getX86GPR(op.getReg(), isPublic, isPrivate);
 						  if (reg != -1)
 						  {
+							  if (isSetA)
+							  {
+								  printf("using:%d output:%x\n", reg, output);
+							  }
 							  if (output & (1 << reg))
 							  {
 								  useIsPrivate = true;
@@ -1398,6 +1431,11 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 					  reg = llvm::getX86GPR(ImpDefs[j], isPublic, isPrivate);
 					  if (reg != -1)
 					  {
+						  if (isSetA)
+						  {
+							  printf("implicit define:%d isPublic:%d isPrivate:%d output:%x\n", 
+								  reg, isPublic, isPrivate, output);
+						  }
 						  if (useIsPrivate || isPrivate)
 						  {
 							  output |= (1 << reg);
@@ -1419,6 +1457,11 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 						  reg = llvm::getX86GPR(op.getReg(), isPublic, isPrivate);
 						  if (reg != -1)
 						  {
+							  if (isSetA)
+							  {
+								  printf("define:%d isPublic:%d isPrivate:%d useIsPrivate:%d output:%x\n",
+									  reg, isPublic, isPrivate, useIsPrivate, output);
+							  }
 							  if (useIsPrivate || isPrivate)
 							  {
 								  output |= (1 << reg);
@@ -1430,7 +1473,17 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 						  }
 					  }
 				  }
+				  if (isSetA)
+				  {
+					  printf("CurAddr:%llx ii:%d output:%x\n",
+						  (*i)->getInsts()->getBeginAddr(), ii, output);
+				  }
 
+				  if (isPublic && useIsPrivate)
+				  {
+					  printf("CurAddr:%llx ii:%d output:%x\n", 
+						  (*i)->getInsts()->getBeginAddr(), ii, output);
+				  }
 				  assert(!isPublic || !useIsPrivate);
 
 				  if (MD.isCall())
@@ -1439,13 +1492,22 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 				  	{
 
 				  	    uint8_t callTag = (*i)->getInsts()->getCallTag();
+						if (callTag == 0xff)
+						{
+							printf("CurAddr:%llx ii:%d output:%x callTag:%hhx getCallTag(out):%hhx\n",
+								(*i)->getInsts()->getBeginAddr(), ii, output, callTag, getCallTag(output));
+							assert(0);
 				  	    //Out << "callTag: " << callTag << " output: " << output << " GetCall: " << getCallTag(output) << "\n";
 				  	    //printf("callTag:%hhx getCallTag:%hhx output:%hx\n", callTag, getCallTag(output), output);
 				  	    //assert((callTag & getCallTag(output) & 0xf) == 0);
+						}
 				  	    if ((callTag & getCallTag(output) & 0xf) != 0)
 				  	    {
+							printf("CurAddr:%llx ii:%d output:%x callTag:%hhx getCallTag(out):%hhx\n",
+								(*i)->getInsts()->getBeginAddr(), ii, output, callTag, getCallTag(output));
 				  	        //Out << "Call assertion failed!\n";
 				  	        printf("Call assertion failed!\n");
+							assert(0);
 							return 0;
 				  	    }
 				  	    output = afterCall(output, (callTag & 0x10) != 0);

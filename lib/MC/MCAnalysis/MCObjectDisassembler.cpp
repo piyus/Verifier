@@ -375,6 +375,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 
 	if (iter ++ > 1000)
 	{
+		//assert(0);
 		break;
 	}
     for (MCTextAtom::const_iterator II = TA->begin(), IE = TA->end();
@@ -471,7 +472,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
 	  	{
 			MCTextAtom *CallA = BBInfos[Target].Atom;
 			assert(CallA && "call traget doesn't have an atom!");
-			//printf("Adding tag to %llx\n", TA->getBeginAddr());
+			//printf("Adding tag to %llx signature:%x\n", TA->getBeginAddr(), CallA->getSignature());
 			//CurBB.setTag(CallA->getTag());
 			CurBB.Atom->setCallTag(CallA->getSignature());
 	  	}
