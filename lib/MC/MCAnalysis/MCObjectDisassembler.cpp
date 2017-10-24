@@ -101,6 +101,35 @@ MCModule *MCObjectDisassembler::buildModule(bool withCFG) {
   return Module;
 }
 
+static const uint8_t PublicRetCfiVal[]
+= {
+	0x49, 0xBB, 0x6F, 0x6F, 0x6F, 0x6F,
+	0x6F, 0x6F, 0x6F, 0x6F,
+	0x49, 0xF7, 0xD3,
+	0x4D, 0x39, 0x1A,
+	0x75, 0x9,
+	0x41, 0x5B,
+	0x49, 0x83, 0xC2, 0x08,
+	0x41, 0xFF, 0xE2,
+	0xCC
+  };
+
+static bool IsIndirectRet(const uint8_t *buf)
+{
+	size_t len = sizeof(PublicRetCfiVal);
+	size_t i;
+
+	for (i = 0; i < len; i++)
+	{
+		if (PublicRetCfiVal[i] != buf[i])
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+
 void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
   for (const SectionRef &Section : Obj.sections()) 
   {
@@ -163,15 +192,26 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
         MCInst Inst;
 
 
-		if (foundFunc && lastInstWasCall)
+		if (foundFunc)
 		{
-			assert(Text);
-			assert(((uint64_t*)(&data[Index]))[0] == 0x9090909090909090);
-			Inst.setOpcode(0);
-			InstSize = 8;
-			Text->addInst(Inst, InstSize);
-			lastInstWasCall = false;
-			continue;
+			if (lastInstWasCall)
+			{
+				assert(Text);
+				assert(((uint64_t*)(&data[Index]))[0] == 0x9090909090909090);
+				//Inst.setOpcode(X86::CFI_INSTRUCTION);
+				Inst.setOpcode(X86::NOOP);
+				InstSize = 8;
+				Text->addInst(Inst, InstSize);
+				lastInstWasCall = false;
+				continue;
+			}
+			if (IsIndirectRet((const uint8_t*)&data[Index]))
+			{
+				Inst.setOpcode(X86::RET);
+				InstSize = sizeof(PublicRetCfiVal) - 1;
+				Text->addInst(Inst, InstSize);
+				continue;
+			}
 		}
 
 		if (*(uint64_t*)(&data[Index]) == 0x9A9A9A9A9A9A9A9A)
@@ -208,14 +248,36 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 
 				lastInstWasCall = MIA.isCall(Inst);
 
-				if (MIA.isReturn(Inst) || MIA.isUnconditionalBranch(Inst) || Inst.getOpcode() == X86::INT3)
+				if (lastInstWasCall)
 				{
-					//printf("Return: CurAddr:%llx LastSeenBranch:%llx\n", CurAddr, lastSeenBranch);
-					if (CurAddr >= lastSeenBranch)
+					assert(Inst.getOpcode() == X86::CALL64pcrel32 || Inst.getOpcode() == X86::CALL64r);
+				}
+
+				if (MIA.isIndirectBranch(Inst))
+				{
+					/* if next instruction is ret it is a stub*/
+					/* FIXME */
+					if ((uint8_t)data[Index + InstSize] != 0xC3)
 					{
-						//printf("Ending Text Atom@: %llx\n", CurAddr);
-						foundFunc = false;
-						Text = nullptr;
+						printf("inst: %hhx InstSize:%zd addr:%llx\n", data[Index + InstSize], InstSize, CurAddr);
+					}
+					assert((uint8_t)data[Index + InstSize] == 0xC3);
+					assert(CurAddr >= lastSeenBranch);
+					foundFunc = false;
+					Text = nullptr;
+				}
+				else
+				{
+					assert(!MIA.isReturn(Inst));
+					if (MIA.isUnconditionalBranch(Inst) || Inst.getOpcode() == X86::INT3)
+					{
+						//printf("Return: CurAddr:%llx LastSeenBranch:%llx\n", CurAddr, lastSeenBranch);
+						if (CurAddr >= lastSeenBranch)
+						{
+							//printf("Ending Text Atom@: %llx\n", CurAddr);
+							foundFunc = false;
+							Text = nullptr;
+						}
 					}
 				}
 				
