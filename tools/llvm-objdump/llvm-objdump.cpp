@@ -1604,34 +1604,40 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
                        TripleName);
   IP->setPrintImmHex(PrintImmHex);
 
+  int numFunctions = 0;
+
 //#if 0
   if (1)
   {
 
-	  int batch = 1000;
+	  int batch = 20;
 	  int start = 0;
 	  int end = 0;
     std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
-    //std::unique_ptr<MCModule> Mod(OD->buildModule(true, start, end));
-    MCModule* Mod(OD->buildModule(true, start, end));
+    //MCModule* Mod(OD->buildModule(true, start, end));
 
 	int i;
-	for (i = 0; i < 20; i++)
+	while (1)
 	{
+		//printf("zzz ....\n");
+		_sleep(1000);
+		//printf("continue!\n");
 		start = end;
 		end += batch;
+    	std::unique_ptr<MCModule> Mod(OD->buildModule(true, start, end));
 
-		printf("before building CFG\n");
-		OD->buildCFG(Mod, start, end);
+		//printf("before building CFG\n");
+		//OD->buildCFG(Mod, start, end);
 
 		int success = 0;
-		printf("CFG construction done!\n");
+		//printf("CFG construction done!\n");
 		//int iter = 0;
 
     	for (MCModule::const_func_iterator FI = Mod->func_begin(),
     	                                   FE = Mod->func_end();
     	                                   FI != FE; ++FI)
 		{
+			numFunctions++;
 		  /*printf("function -- %d\n", iter);
 		  if (iter < start)
 		  {
@@ -1651,11 +1657,19 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     	                **FI, IP.get(), *STI, *MII, *MRI, *MIA);
 		  }
     	}
+		if (Mod->Functions.empty())
+		{
+			break;
+		}
 		while (!Mod->Functions.empty())
 		{
 			Mod->Functions.pop_back();
 		}
+		printf("number of verified functions: %d\n", numFunctions);
+		//break;
 	}
+	printf("number of verified functions: %d\n", numFunctions);
+  	assert(i != 1000);
   }
   return;
 

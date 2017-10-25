@@ -43,8 +43,7 @@ class MCModule {
   /// \brief Atoms in this module, sorted by begin address.
   /// FIXME: This doesn't handle overlapping atoms (which happen when a basic
   /// block starts in the middle of an instruction of another basic block.)
-  typedef std::vector<MCAtom*> AtomListTy;
-  AtomListTy Atoms;
+  
 
   // For access to map/remap.
   friend class MCAtom;
@@ -90,6 +89,9 @@ class MCModule {
 public:
   MCModule();
   ~MCModule();
+
+  typedef std::vector<MCAtom*> AtomListTy;
+  AtomListTy Atoms;
 
   typedef std::vector<std::unique_ptr<MCFunction>> FunctionListTy;
   FunctionListTy Functions;

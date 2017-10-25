@@ -139,6 +139,7 @@ void MCModule::trackBBForAtom(const MCTextAtom *Atom, MCBasicBlock *BB) {
 MCModule::MCModule() : Entrypoint(0) { }
 
 MCModule::~MCModule() {
+	printf("deleting module!\n");
   for (AtomListTy::iterator AI = atom_begin(),
                             AE = atom_end();
                             AI != AE; ++AI)

@@ -96,8 +96,8 @@ MCModule *MCObjectDisassembler::buildModule(bool withCFG, int start, int end) {
   MCModule *Module = buildEmptyModule();
 
  buildSectionAtoms(Module);
-  //if (withCFG)
-    //buildCFG(Module, start, end);
+  if (withCFG)
+    buildCFG(Module, start, end);
   return Module;
 }
 
@@ -366,13 +366,17 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 
 
 
-  int iter = 0;
+  int iter = -1;
+
+  printf("start:%d end:%d\n", start, end);
   // First, determine the basic block boundaries and call targets.
   for (MCModule::atom_iterator AI = Module->atom_begin(),
                                AE = Module->atom_end();
        AI != AE; ++AI) {
     MCTextAtom *TA = dyn_cast<MCTextAtom>(*AI);
     if (!TA) continue;
+	//printf("iter:%d TA:%p\n", iter, TA);
+	iter++;
 	if (iter < start)
 	{
 		continue;
@@ -381,7 +385,8 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 	{
 		break;
 	}
-	iter++;
+
+	//printf("Adding function: %llx to party!\n", TA->getBeginAddr());
 	Funcs.push_back(TA->getBeginAddr());
 
     for (MCTextAtom::const_iterator II = TA->begin(), IE = TA->end();
@@ -440,6 +445,8 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
   RemoveDupsFromAddressVector(Splits);
   RemoveDupsFromAddressVector(Calls);
 
+  //printf("after removing Dups!\n");
+
   // Split text atoms into basic block atoms.
   for (AddressSetTy::const_iterator SI = Splits.begin(), SE = Splits.end();
        SI != SE; ++SI) {
@@ -459,6 +466,8 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
     BBName = BBName.substr(0, BBName.find_last_of(':'));
     NewAtom->setName((BBName + ":" + utohexstr(*SI)).str());
   }
+
+  //printf("after splits!\n");
 
   // Compute succs/preds.
   for (MCModule::atom_iterator AI = Module->atom_begin(),
@@ -500,6 +509,8 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
       CurBB.addSucc(BBInfos[LI.Address + LI.Size]);
 	}
   }
+
+  //printf("after visting atoms!\n");
 
 
   
@@ -549,6 +560,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
           MCBB->addPredecessor((*PI)->BB);
     }
   }
+  //printf("after computing functions!\n");
   
 }
 
