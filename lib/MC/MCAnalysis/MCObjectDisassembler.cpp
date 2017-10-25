@@ -235,13 +235,33 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 					if (foundFunc)
 					{
 						uint64_t Target;
-						if (!Text) {
+						if (!Text)
+						{
 							//printf("Creating Text Atom@: %llx\n", CurAddr);
 							//outs() << "Creating Text Atom@ "  << CurAddr << "\n";
 							Text = Module->createTextAtom(CurAddr, CurAddr + InstSize - 1);
 							Text->setName(SecName);
 							Text->setSignature(tag);
 						}
+
+						if (MIA.isIndirectBranch(Inst))
+						{
+							Inst.setOpcode(X86::RET);
+							Text->addInst(Inst, InstSize);
+							/* if next instruction is ret it is a stub*/
+							/* FIXME */
+							if ((uint8_t)data[Index + InstSize] != 0xC3)
+							{
+								printf("inst: %hhx InstSize:%zd addr:%llx\n", data[Index + InstSize], InstSize, CurAddr);
+							}
+							assert((uint8_t)data[Index + InstSize] == 0xC3);
+							assert(CurAddr >= lastSeenBranch);
+							foundFunc = false;
+							Text = nullptr;
+							continue;
+					//		printf("end func:%llx\n", CurAddr);
+						}
+
 						Text->addInst(Inst, InstSize);
 
 						if (!MIA.isCall(Inst) && MIA.evaluateBranch(Inst, CurAddr, InstSize, Target))
@@ -259,22 +279,7 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 							assert(Inst.getOpcode() == X86::CALL64pcrel32 || Inst.getOpcode() == X86::CALL64r);
 						}
 
-						if (MIA.isIndirectBranch(Inst))
-						{
-							/* if next instruction is ret it is a stub*/
-							/* FIXME */
-							if ((uint8_t)data[Index + InstSize] != 0xC3)
-							{
-								printf("inst: %hhx InstSize:%zd addr:%llx\n", data[Index + InstSize], InstSize, CurAddr);
-							}
-							assert((uint8_t)data[Index + InstSize] == 0xC3);
-							assert(CurAddr >= lastSeenBranch);
-							foundFunc = false;
-							Text = nullptr;
-
-					//		printf("end func:%llx\n", CurAddr);
-						}
-						else
+						//else
 						{
 							assert(!MIA.isReturn(Inst));
 							if (MIA.isUnconditionalBranch(Inst) || Inst.getOpcode() == X86::INT3)
@@ -367,8 +372,9 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 
 
   int iter = -1;
+  uint64_t totalSize = 0, curSize;
 
-  printf("start:%d end:%d\n", start, end);
+  //printf("start:%d end:%d\n", start, end);
   // First, determine the basic block boundaries and call targets.
   for (MCModule::atom_iterator AI = Module->atom_begin(),
                                AE = Module->atom_end();
@@ -383,8 +389,23 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 	}
 	if (iter == end)
 	{
+		//printf("totalSize:%lld\n", totalSize);
+		//break;
+	}
+
+
+	curSize = TA->getEndAddr() - TA->getBeginAddr();
+	if (curSize > (16 << 12))
+	{
+		printf("Single very large function! %llx %llx\n", TA->getEndAddr(), TA->getBeginAddr());
+		continue;
+	}
+	totalSize += curSize;
+	if (totalSize > (16 << 12))
+	{
 		break;
 	}
+
 
 	//printf("Adding function: %llx to party!\n", TA->getBeginAddr());
 	Funcs.push_back(TA->getBeginAddr());

@@ -92,6 +92,7 @@ public:
 
   typedef std::vector<MCAtom*> AtomListTy;
   AtomListTy Atoms;
+  int numFunctions;
 
   typedef std::vector<std::unique_ptr<MCFunction>> FunctionListTy;
   FunctionListTy Functions;

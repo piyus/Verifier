@@ -1523,7 +1523,14 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 					}
 				  }
 			  }
-			  assert(opcode != X86::JMP64m && opcode != X86::JMP32m && opcode != X86::JMP16m);
+			  
+			  if (opcode == X86::JMP64m || opcode == X86::JMP32m || opcode == X86::JMP16m)
+			  {
+				  printf("Basic block contains indirect jmp : %llx\n", 
+					     (*i)->getInsts()->getBeginAddr());
+				  assert(0);
+			  }
+
 			  // Escape special chars and print the instruction in mnemonic form.
 			  /*std::string Str;
 			  raw_string_ostream OS(Str);
@@ -1616,15 +1623,16 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
     //MCModule* Mod(OD->buildModule(true, start, end));
 
-	int i;
 	while (1)
 	{
 		//printf("zzz ....\n");
-		_sleep(1000);
+		//_sleep(1000);
 		//printf("continue!\n");
 		start = end;
 		end += batch;
     	std::unique_ptr<MCModule> Mod(OD->buildModule(true, start, end));
+
+		end = start + Mod->Functions.size();
 
 		//printf("before building CFG\n");
 		//OD->buildCFG(Mod, start, end);
@@ -1665,11 +1673,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 		{
 			Mod->Functions.pop_back();
 		}
-		printf("number of verified functions: %d\n", numFunctions);
+		//printf("number of verified functions: %d\n", numFunctions);
 		//break;
 	}
 	printf("number of verified functions: %d\n", numFunctions);
-  	assert(i != 1000);
   }
   return;
 
