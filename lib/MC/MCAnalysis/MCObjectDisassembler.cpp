@@ -184,6 +184,8 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 		uint8_t tag = 0;
 		const char *data = Contents.data();
 		bool lastInstWasCall = false;
+		bool debugThisFunc = false;
+		uint64_t entryAddr = 0;
 
 
 		for (uint64_t Index = 0; Index < SecSize; Index += InstSize)
@@ -221,6 +223,8 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 				InstSize = 16;
 				tag = data[Index + 8];
 				Text = nullptr;
+				//debugThisFunc = (CurAddr + InstSize == 0x180032990);
+				entryAddr = CurAddr + InstSize;
 			}
 			else
 			{
@@ -246,6 +250,10 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 
 						if (MIA.isIndirectBranch(Inst))
 						{
+							if (debugThisFunc)
+							{
+								printf("found indirect branch at: %llx\n", CurAddr);
+							}
 							Inst.setOpcode(X86::RET);
 							Text->addInst(Inst, InstSize);
 							/* if next instruction is ret it is a stub*/
@@ -266,6 +274,11 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 
 						if (!MIA.isCall(Inst) && MIA.evaluateBranch(Inst, CurAddr, InstSize, Target))
 						{
+							if (Target < entryAddr)
+							{
+								printf("Jumping before function %llx %llx\n", entryAddr, Target);
+								assert(0);
+							}
 							if (lastSeenBranch < Target)
 							{
 								lastSeenBranch = Target;
@@ -287,6 +300,12 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 								//printf("Return: CurAddr:%llx LastSeenBranch:%llx\n", CurAddr, lastSeenBranch);
 								if (CurAddr >= lastSeenBranch)
 								{
+
+									if (debugThisFunc)
+									{
+										printf("found unconditional branch at: %llx lastSeenBranch:%llx\n", 
+												CurAddr, lastSeenBranch);
+									}
 									//printf("Ending Text Atom@: %llx\n", CurAddr);
 									foundFunc = false;
 									Text = nullptr;
@@ -373,6 +392,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 
   int iter = -1;
   uint64_t totalSize = 0, curSize;
+  bool debugThisFunc = false;
 
   //printf("start:%d end:%d\n", start, end);
   // First, determine the basic block boundaries and call targets.
@@ -393,6 +413,16 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 		//break;
 	}
 
+	if (debugThisFunc)
+	{
+		break;
+	}
+	//debugThisFunc = (TA->getBeginAddr() == 0x180032990);
+	if (debugThisFunc && totalSize)
+	{
+		debugThisFunc = false;
+		break;
+	}
 
 	curSize = TA->getEndAddr() - TA->getBeginAddr();
 	if (curSize > (16 << 12))
@@ -414,6 +444,10 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
          II != IE; ++II) {
 	  MCAtom *A;
 	  
+	  if (debugThisFunc == true)
+	  {
+		  printf("inst: %llx\n", II->Address);
+	  }
       if (MIA.isTerminator(II->Inst))
 	  {
 		  if (II->Address + II->Size < TA->getEndAddr())
@@ -427,11 +461,19 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 				  continue;
 			  }
 			  Splits.push_back(II->Address + II->Size);
+			  if (debugThisFunc)
+			  {
+				  printf("Splits terminator : %llx \n", II->Address + II->Size);
+			  }
 			  //printf("Adding target %llx to list!\n", II->Address + II->Size);
 		  }
 	  }
 	  if (MIA.isCall(II->Inst))
 	  {
+			  if (debugThisFunc)
+			  {
+				  printf("Splits calls : %llx\n", II->Address + II->Size);
+			  }
 		  Splits.push_back(II->Address + II->Size);
 	  }
       uint64_t Target;
@@ -450,6 +492,10 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 			printf("Adding target %llx to list!\n", Target);
 		}*/
         Splits.push_back(Target);
+			  if (debugThisFunc)
+			  {
+				  printf("Splits branch : %llx\n", Target);
+			  }
 
     	A = Module->findAtomContaining(Target);
 		if (!A || !isa<MCTextAtom>(A))
@@ -481,6 +527,12 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
     MCTextAtom *TA = cast<MCTextAtom>(A);
     if (TA->getBeginAddr() == *SI)
       continue;
+
+	if (debugThisFunc)
+	{
+	    printf("Creating SPLIT for : %llx\n", *SI);
+	}
+
     MCTextAtom *NewAtom = TA->split(*SI);
     BBInfos[NewAtom->getBeginAddr()].Atom = NewAtom;
     StringRef BBName = TA->getName();
@@ -521,12 +573,28 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
     if (MIA.isBranch(LI.Inst)) {
       uint64_t Target;
       if (MIA.evaluateBranch(LI.Inst, LI.Address, LI.Size, Target))
+	  {
+		if (debugThisFunc)
+		{
+	    	printf("Adding Successor %llx : %llx\n", LI.Address, Target);
+		}
         CurBB.addSucc(BBInfos[Target]);
+	  }
       if (MIA.isConditionalBranch(LI.Inst))
+	  {
+		if (debugThisFunc)
+		{
+	    	printf("Adding coditional Successor : %llx\n", LI.Address + LI.Size);
+		}
         CurBB.addSucc(BBInfos[LI.Address + LI.Size]);
+	  }
     }
 	else if (!MIA.isTerminator(LI.Inst))
 	{
+		if (debugThisFunc)
+		{
+	    	printf("Adding non-term Successor : %llx\n", LI.Address + LI.Size);
+		}
       CurBB.addSucc(BBInfos[LI.Address + LI.Size]);
 	}
   }
@@ -549,7 +617,17 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
     for (size_t wi = 0; wi < Worklist.size(); ++wi) {
       BBInfo *BBI = Worklist[wi];
       if (!BBI->Atom)
+	  {
+		  if (debugThisFunc)
+		  {
+		  	printf("no ATOM found -- for BBI %p\n", BBI);
+		  }
         continue;
+	  }
+	  if (debugThisFunc)
+	  {
+	  	printf("Atom going ON: %llx\n", BBI->Atom->getBeginAddr());
+	  }
       BBI->BB = &MCFN.createBlock(*BBI->Atom);
 	  /*if (BBI->hasTag())
 	  {
@@ -559,10 +637,28 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
       // Add all predecessors and successors to the worklist.
       for (BBInfoSetTy::iterator SI = BBI->Succs.begin(), SE = BBI->Succs.end();
                                  SI != SE; ++SI)
+	  {
+	  	if (debugThisFunc)
+	  	{
+			if (!(*SI)->Atom)
+			{
+		  			printf("no ATOM found -- for SI : %p\n", SI);
+			}
+	  	}
         Worklist.insert(*SI);
+	  }
       for (BBInfoSetTy::iterator PI = BBI->Preds.begin(), PE = BBI->Preds.end();
                                  PI != PE; ++PI)
+	  {
+	  	if (debugThisFunc)
+	  	{
+			if (!(*PI)->Atom)
+			{
+		  			printf("no ATOM found -- for PI %p\n", PI);
+			}
+	  	}
         Worklist.insert(*PI);
+	  }
     }
 
     // Set preds/succs.

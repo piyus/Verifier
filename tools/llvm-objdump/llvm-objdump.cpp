@@ -1048,14 +1048,22 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
 		  bool hasPreds = (*i)->pred_begin() != (*i)->pred_end();
 
 		  if (!hasPreds && i != f.begin())
+		  {
+		  	  printf("basic block : %llx no preds\n", (*i)->getInsts()->getBeginAddr());
 			  continue;
+		  }
 
 		  if (!((*i)->getInsts()->hasInput()))
+		  {
+		  	  printf("basic block : %llx no input\n", (*i)->getInsts()->getBeginAddr());
 			  continue;
+		  }
 
 		  iter++;
 
 		  Out << "FUNCTION:" << (*i)->getInsts()->getBeginAddr() << "\n";
+
+		  printf("basic block : %llx\n", (*i)->getInsts()->getBeginAddr());
 
 		  uint16_t output = (*i)->getInsts()->getInput();
 
@@ -1074,10 +1082,11 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
 			  bool isSetA = MI.getOpcode() == X86::SETAr;
 
 			  Out << "iter: " << iter << " output: " << output << "\n";
-			  //printf("iter:%d output:%x\n", iter, output);
+			  printf("iter:%d output:%x opcode:%x ret:%x\n", iter, output, (unsigned)opcode, (unsigned)X86::RET);
 
 			  if (MD.isReturn() && returningPublic)
 			  {
+				  printf("found ret\n");
 				  assert(((output >> RAX_SHIFT) & 1) == 0);
 			  }
 
@@ -1237,7 +1246,7 @@ static void emitDOTFileDebug(const char *FileName, const MCFunction &f,
 			  uint16_t newInput = output | oldInput;
 			  //Out << "newInput: " << newInput << " oldInput: " << oldInput << " output: " << output << "\n";
 			  //printf("newInput:%hx oldInput:%hx output:%hx\n", newInput, oldInput, output);
-			  if (newInput != oldInput)
+			  if (!(TA->hasInput()) || newInput != oldInput)
 			  {
 				  TA->setInput(newInput);
 				  change = true;
@@ -1282,6 +1291,22 @@ static uint8_t FetchIndirectCallTag(MCFunction::const_iterator i, unsigned reg,
 	return 0;
 }
 
+#define RAX_MASK (1 << RAX_SHIFT)
+#define RBX_MASK (1 << RBX_SHIFT)
+#define RBP_MASK (1 << RBP_SHIFT)
+#define RSI_MASK (1 << RSI_SHIFT)
+#define RDI_MASK (1 << RDI_SHIFT)
+#define R12_MASK (1 << R12_SHIFT)
+#define R13_MASK (1 << R13_SHIFT)
+#define R14_MASK (1 << R14_SHIFT)
+#define R15_MASK (1 << R15_SHIFT)
+
+#define RET_MASK (RAX_MASK | RBX_MASK | RBP_MASK | RSI_MASK | \
+                  RDI_MASK | R12_MASK | R13_MASK | R14_MASK | \
+				  R15_MASK)
+
+
+
 // Write a graphviz file for the CFG inside an MCFunction.
 // FIXME: Use GraphWriter
 static int emitDOTFile(const char *FileName, const MCFunction &f,
@@ -1324,6 +1349,7 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 
   //Out << "digraph \"" << f.getName() << "\" {\n";
   //Out << "graph [ rankdir = \"LR\" ];\n";
+  bool retFound = false;
   
   do {
 	  change = false;
@@ -1363,11 +1389,12 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 
 			  if (MD.isReturn() && returningPublic)
 			  {
-				  if (((output >> RAX_SHIFT) & 1))
+				  if (output & RET_MASK)
 				  {
-					  printf("ADDR:%llx\n", (*i)->getInsts()->getBeginAddr());
+					  printf("ADDR:%llx output:%x\n", (*i)->getInsts()->getBeginAddr(), output);
+					  assert(0);
 				  }
-				  assert(((output >> RAX_SHIFT) & 1) == 0);
+				  retFound = true;
 			  }
 
 			  if (opcode == X86::XOR8rr || 
@@ -1524,12 +1551,12 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 				  }
 			  }
 			  
-			  if (opcode == X86::JMP64m || opcode == X86::JMP32m || opcode == X86::JMP16m)
+			  /*if (opcode == X86::JMP64m || opcode == X86::JMP32m || opcode == X86::JMP16m)
 			  {
 				  printf("Basic block contains indirect jmp : %llx\n", 
 					     (*i)->getInsts()->getBeginAddr());
 				  assert(0);
-			  }
+			  }*/
 
 			  // Escape special chars and print the instruction in mnemonic form.
 			  /*std::string Str;
@@ -1551,7 +1578,7 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 			  uint16_t newInput = output | oldInput;
 			  //Out << "newInput: " << newInput << " oldInput: " << oldInput << " output: " << output << "\n";
 			  //printf("newInput:%hx oldInput:%hx output:%hx\n", newInput, oldInput, output);
-			  if (newInput != oldInput)
+			  if (!(TA->hasInput()) || newInput != oldInput)
 			  {
 				  TA->setInput(newInput);
 				  change = true;
@@ -1560,7 +1587,11 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 	  }
   } while (change);
   //Out << "}\n";
-  return 1;
+	if (!retFound)
+	{
+		printf("ret not found in functions:%llx\n", MBB->getInsts()->getBeginAddr());
+	}
+  return retFound;
 }
 
 
