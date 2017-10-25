@@ -1608,37 +1608,50 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   if (1)
   {
 
+	  int batch = 1000;
 	  int start = 0;
-	  int end = 1000;
+	  int end = 0;
     std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
-    std::unique_ptr<MCModule> Mod(OD->buildModule(true, start, end));
+    //std::unique_ptr<MCModule> Mod(OD->buildModule(true, start, end));
+    MCModule* Mod(OD->buildModule(true, start, end));
 
-	int success = 0;
-	printf("CFG construction done!\n");
-	int iter = 0;
-
-    for (MCModule::const_func_iterator FI = Mod->func_begin(),
-                                       FE = Mod->func_end();
-                                       FI != FE; ++FI)
+	int i;
+	for (i = 0; i < 2; i++)
 	{
-	  if (iter < start)
-	  {
-		  continue;
-	  }
-	  if (iter == end)
-	  {
-		  break;
-	  }
-	  iter++;
-      success = emitDOTFile(NULL,
-                    **FI, IP.get(), *STI, *MII, *MRI, *MIA);
-	  if (!success)
-	  {
-      	emitDOTFileDebug(("debugCFG_" + utostr(iter) + ".dot").c_str(),
-                    **FI, IP.get(), *STI, *MII, *MRI, *MIA);
-	  }
-    }
+		start = end;
+		end += batch;
+
+		printf("before building CFG\n");
+		OD->buildCFG(Mod, start, end);
+
+		int success = 0;
+		printf("CFG construction done!\n");
+		int iter = 0;
+
+    	for (MCModule::const_func_iterator FI = Mod->func_begin(),
+    	                                   FE = Mod->func_end();
+    	                                   FI != FE; ++FI)
+		{
+		  if (iter < start)
+		  {
+			  continue;
+		  }
+		  if (iter == end)
+		  {
+			  break;
+		  }
+		  iter++;
+    	  success = emitDOTFile(NULL,
+    	                **FI, IP.get(), *STI, *MII, *MRI, *MIA);
+		  if (!success)
+		  {
+    	  	emitDOTFileDebug(("debugCFG_" + utostr(iter) + ".dot").c_str(),
+    	                **FI, IP.get(), *STI, *MII, *MRI, *MIA);
+		  }
+    	}
+	}
   }
+  return;
 
 //#endif
 

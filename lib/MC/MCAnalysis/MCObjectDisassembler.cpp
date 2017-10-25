@@ -96,8 +96,8 @@ MCModule *MCObjectDisassembler::buildModule(bool withCFG, int start, int end) {
   MCModule *Module = buildEmptyModule();
 
  buildSectionAtoms(Module);
-  if (withCFG)
-    buildCFG(Module, start, end);
+  //if (withCFG)
+    //buildCFG(Module, start, end);
   return Module;
 }
 
@@ -350,8 +350,8 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
     }
   }
 
-  assert(Module->func_begin() == Module->func_end()
-         && "Module already has a CFG!");
+  //assert(Module->func_begin() == Module->func_end()
+    //     && "Module already has a CFG!");
 
   for (MCModule::atom_iterator AI = Module->atom_begin(),
                                AE = Module->atom_end();

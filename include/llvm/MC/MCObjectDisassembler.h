@@ -104,6 +104,7 @@ public:
   /// This is the inverse of getEffectiveLoadAddr.
   virtual uint64_t getOriginalLoadAddr(uint64_t EffectiveAddr);
   /// @}
+  void buildCFG(MCModule *Module, int start, int end);
 
 protected:
   const object::ObjectFile &Obj;
@@ -132,7 +133,6 @@ private:
   /// NOTE: Each MCBasicBlock in a MCFunction is backed by a single MCTextAtom.
   /// When the CFG is built, contiguous instructions that were previously in a
   /// single MCTextAtom will be split in multiple basic block atoms.
-  void buildCFG(MCModule *Module, int start, int end);
 
   MCBasicBlock *getBBAt(MCModule *Module, MCFunction *MCFN, uint64_t BeginAddr,
                         AddressSetTy &CallTargets,
