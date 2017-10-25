@@ -1608,32 +1608,36 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   if (1)
   {
 
+	  int start = 0;
+	  int end = 1000;
     std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
-    std::unique_ptr<MCModule> Mod(OD->buildModule(true /* withCFG  true*/));
+    std::unique_ptr<MCModule> Mod(OD->buildModule(true, start, end));
 
 	int success = 0;
-	int filenum = 0;
 	printf("CFG construction done!\n");
+	int iter = 0;
 
     for (MCModule::const_func_iterator FI = Mod->func_begin(),
                                        FE = Mod->func_end();
                                        FI != FE; ++FI)
 	{
-	  //printf("filenum:%d\n", filenum);
+	  if (iter < start)
+	  {
+		  continue;
+	  }
+	  if (iter == end)
+	  {
+		  break;
+	  }
+	  iter++;
       success = emitDOTFile(NULL,
                     **FI, IP.get(), *STI, *MII, *MRI, *MIA);
 	  if (!success)
 	  {
-      	emitDOTFileDebug(("debugCFG_" + utostr(filenum) + ".dot").c_str(),
+      	emitDOTFileDebug(("debugCFG_" + utostr(iter) + ".dot").c_str(),
                     **FI, IP.get(), *STI, *MII, *MRI, *MIA);
 	  }
-      ++filenum;
-	  if (filenum == 1000)
-	  {
-		  break;
-	  }
     }
-	return;
   }
 
 //#endif

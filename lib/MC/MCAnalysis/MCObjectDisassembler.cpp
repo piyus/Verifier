@@ -92,12 +92,12 @@ MCModule *MCObjectDisassembler::buildEmptyModule() {
   return Module;
 }
 
-MCModule *MCObjectDisassembler::buildModule(bool withCFG) {
+MCModule *MCObjectDisassembler::buildModule(bool withCFG, int start, int end) {
   MCModule *Module = buildEmptyModule();
 
  buildSectionAtoms(Module);
   if (withCFG)
-    buildCFG(Module);
+    buildCFG(Module, start, end);
   return Module;
 }
 
@@ -329,7 +329,7 @@ static void RemoveDupsFromAddressVector(MCObjectDisassembler::AddressSetTy &V) {
   V.erase(std::unique(V.begin(), V.end()), V.end());
 }
 
-void MCObjectDisassembler::buildCFG(MCModule *Module) {
+void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
   typedef std::map<uint64_t, BBInfo> BBInfoByAddrTy;
   BBInfoByAddrTy BBInfos;
   AddressSetTy Splits;
@@ -372,12 +372,16 @@ void MCObjectDisassembler::buildCFG(MCModule *Module) {
        AI != AE; ++AI) {
     MCTextAtom *TA = dyn_cast<MCTextAtom>(*AI);
     if (!TA) continue;
-
-	if (iter ++ > 1000)
+	if (iter < start)
 	{
-		//assert(0);
+		continue;
+	}
+	if (iter == end)
+	{
 		break;
 	}
+	iter++;
+
     for (MCTextAtom::const_iterator II = TA->begin(), IE = TA->end();
          II != IE; ++II) {
 	  MCAtom *A;

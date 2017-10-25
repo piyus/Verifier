@@ -53,7 +53,7 @@ public:
   /// what was found in the object file. If withCFG is true, MCFunctions are
   /// created, containing MCBasicBlocks. All text atoms are split to form basic
   /// block atoms, which then each back an MCBasicBlock.
-  MCModule *buildModule(bool withCFG = false);
+  MCModule *buildModule(bool withCFG, int start, int end);
 
   MCModule *buildEmptyModule();
 
@@ -132,7 +132,7 @@ private:
   /// NOTE: Each MCBasicBlock in a MCFunction is backed by a single MCTextAtom.
   /// When the CFG is built, contiguous instructions that were previously in a
   /// single MCTextAtom will be split in multiple basic block atoms.
-  void buildCFG(MCModule *Module);
+  void buildCFG(MCModule *Module, int start, int end);
 
   MCBasicBlock *getBBAt(MCModule *Module, MCFunction *MCFN, uint64_t BeginAddr,
                         AddressSetTy &CallTargets,
