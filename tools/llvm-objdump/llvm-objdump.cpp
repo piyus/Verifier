@@ -1616,7 +1616,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     MCModule* Mod(OD->buildModule(true, start, end));
 
 	int i;
-	for (i = 0; i < 2; i++)
+	for (i = 0; i < 20; i++)
 	{
 		start = end;
 		end += batch;
@@ -1626,29 +1626,35 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
 		int success = 0;
 		printf("CFG construction done!\n");
-		int iter = 0;
+		//int iter = 0;
 
     	for (MCModule::const_func_iterator FI = Mod->func_begin(),
     	                                   FE = Mod->func_end();
     	                                   FI != FE; ++FI)
 		{
+		  /*printf("function -- %d\n", iter);
 		  if (iter < start)
 		  {
 			  continue;
 		  }
 		  if (iter == end)
 		  {
-			  break;
+			  //break;
 		  }
-		  iter++;
+		  iter++;*/
     	  success = emitDOTFile(NULL,
     	                **FI, IP.get(), *STI, *MII, *MRI, *MIA);
 		  if (!success)
 		  {
-    	  	emitDOTFileDebug(("debugCFG_" + utostr(iter) + ".dot").c_str(),
+			  printf("failed!\n");
+    	  	emitDOTFileDebug(("debugCFG_" + utostr(0) + ".dot").c_str(),
     	                **FI, IP.get(), *STI, *MII, *MRI, *MIA);
 		  }
     	}
+		while (!Mod->Functions.empty())
+		{
+			Mod->Functions.pop_back();
+		}
 	}
   }
   return;

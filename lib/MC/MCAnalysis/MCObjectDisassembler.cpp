@@ -334,6 +334,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
   BBInfoByAddrTy BBInfos;
   AddressSetTy Splits;
   AddressSetTy Calls;
+  AddressSetTy Funcs;
 
   for (const SymbolRef &Symbol : Obj.symbols()) {
     Expected<SymbolRef::Type> _SymType = Symbol.getType();
@@ -350,8 +351,8 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
     }
   }
 
-  //assert(Module->func_begin() == Module->func_end()
-    //     && "Module already has a CFG!");
+  assert(Module->func_begin() == Module->func_end()
+         && "Module already has a CFG!");
 
   for (MCModule::atom_iterator AI = Module->atom_begin(),
                                AE = Module->atom_end();
@@ -381,6 +382,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 		break;
 	}
 	iter++;
+	Funcs.push_back(TA->getBeginAddr());
 
     for (MCTextAtom::const_iterator II = TA->begin(), IE = TA->end();
          II != IE; ++II) {
@@ -502,7 +504,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 
   
   // Create functions and basic blocks.
-  for (AddressSetTy::const_iterator CI = Calls.begin(), CE = Calls.end();
+  for (AddressSetTy::const_iterator CI = Funcs.begin(), CE = Funcs.end();
        CI != CE; ++CI) {
     BBInfo &BBI = BBInfos[*CI];
     if (!BBI.Atom) continue;

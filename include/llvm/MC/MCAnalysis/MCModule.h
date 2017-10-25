@@ -76,8 +76,6 @@ class MCModule {
 
   /// \name Function tracking
   /// @{
-  typedef std::vector<std::unique_ptr<MCFunction>> FunctionListTy;
-  FunctionListTy Functions;
   /// @}
 
   /// The address of the entrypoint function.
@@ -93,6 +91,8 @@ public:
   MCModule();
   ~MCModule();
 
+  typedef std::vector<std::unique_ptr<MCFunction>> FunctionListTy;
+  FunctionListTy Functions;
   /// \name Create a new MCAtom covering the specified offset range.
   /// @{
   MCTextAtom *createTextAtom(uint64_t Begin, uint64_t End);
