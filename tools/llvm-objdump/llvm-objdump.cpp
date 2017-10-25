@@ -1301,9 +1301,11 @@ static uint8_t FetchIndirectCallTag(MCFunction::const_iterator i, unsigned reg,
 #define R14_MASK (1 << R14_SHIFT)
 #define R15_MASK (1 << R15_SHIFT)
 
-#define RET_MASK (RAX_MASK | RBX_MASK | RBP_MASK | RSI_MASK | \
+#define CALL_MASK (RBX_MASK | RBP_MASK | RSI_MASK | \
                   RDI_MASK | R12_MASK | R13_MASK | R14_MASK | \
 				  R15_MASK)
+
+#define RET_MASK (RAX_MASK | CALL_MASK)
 
 
 
@@ -1312,21 +1314,8 @@ static uint8_t FetchIndirectCallTag(MCFunction::const_iterator i, unsigned reg,
 static int emitDOTFile(const char *FileName, const MCFunction &f,
                         MCInstPrinter *IP, MCSubtargetInfo const &STI, 
 	                    MCInstrInfo const &MII, MCRegisterInfo const &MRI,
-	                    MCInstrAnalysis const &MIA) {
-  // Start a new dot file.
-  //std::string Error;
-  //std::error_code Error;
-  //raw_fd_ostream Out(FileName, Error, sys::fs::F_Text);
-  //outs() << "FILE: " << FileName << "\n";
-  //outs() << f.getName() << "()\n";
-
-
-  /*if (Error) {
-	outs() << "ERROR:\n";
-    //errs() << "llvm-objdump: warning: " << Error << '\n';
-    return 1;
-  }*/
-
+	                    MCInstrAnalysis const &MIA)
+{
   MCBasicBlock *MBB = (MCBasicBlock*)f.getEntryBlock();
   uint8_t sig = MBB->getInsts()->getSignature();
   int rcxPrivate = (sig & 8) == 0;
@@ -1340,15 +1329,12 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 	  (r8Private << R8_SHIFT) |
 	  (r9Private << R9_SHIFT) | 
 	  (1 << R10_SHIFT) |
-	  (1 << R11_SHIFT);
+	  (1 << R11_SHIFT) |
+	  (1 << RAX_SHIFT);
   MCTextAtom *TA = (MCTextAtom*)MBB->getInsts();
   TA->setInput(input);
   bool change;
   int iter;
-
-
-  //Out << "digraph \"" << f.getName() << "\" {\n";
-  //Out << "graph [ rankdir = \"LR\" ];\n";
   bool retFound = false;
   
   do {
@@ -1532,14 +1518,16 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 				  	    {
 							printf("CurAddr:%llx ii:%d output:%x callTag:%hhx getCallTag(out):%hhx\n",
 								(*i)->getInsts()->getBeginAddr(), ii, output, callTag, getCallTag(output));
-				  	        //Out << "Call assertion failed!\n";
 				  	        printf("Call assertion failed!\n");
 							assert(0);
-							return 0;
 				  	    }
+						if ((output & CALL_MASK))
+						{
+							printf("CurAddr:%llx ii:%d output:%x\n", (*i)->getInsts()->getBeginAddr(), ii, output);
+							printf("invalid callee saved register!\n");
+							assert(0);
+						}
 				  	    output = afterCall(output, (callTag & 0x10) != 0);
-				  	    //Out << "AfterCallOutput: " << output << "\n";
-				  	    //printf("AfterCallOutput:%hx\n", output);
 				  	}
 					else
 					{
@@ -1550,34 +1538,14 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 					}
 				  }
 			  }
-			  
-			  /*if (opcode == X86::JMP64m || opcode == X86::JMP32m || opcode == X86::JMP16m)
-			  {
-				  printf("Basic block contains indirect jmp : %llx\n", 
-					     (*i)->getInsts()->getBeginAddr());
-				  assert(0);
-			  }*/
-
-			  // Escape special chars and print the instruction in mnemonic form.
-			  /*std::string Str;
-			  raw_string_ostream OS(Str);
-			  IP->printInst(&MI, OS, "", STI);
-			  Out << DOT::EscapeString(OS.str());
-			  Out << "\n";*/
-			  /*printf("%s   MayLoad:%d MayStore:%d Opcode:%x\n", 
-				  OS.str().c_str(), MD.mayLoad(), MD.mayStore(), MD.getOpcode());*/
 		  }
-		  //Out << "\" shape=\"record\" ];\n";
 
-		  // Add edges.
 		  for (MCBasicBlock::succ_const_iterator si = (*i)->succ_begin(),
 			  se = (*i)->succ_end(); si != se; ++si)
 		  {
 			  TA = (MCTextAtom*)(*si)->getInsts();
 			  uint16_t oldInput = !(TA->hasInput()) ? 0 : TA->getInput();
 			  uint16_t newInput = output | oldInput;
-			  //Out << "newInput: " << newInput << " oldInput: " << oldInput << " output: " << output << "\n";
-			  //printf("newInput:%hx oldInput:%hx output:%hx\n", newInput, oldInput, output);
 			  if (!(TA->hasInput()) || newInput != oldInput)
 			  {
 				  TA->setInput(newInput);
@@ -1586,11 +1554,11 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 		  }
 	  }
   } while (change);
-  //Out << "}\n";
-	if (!retFound)
-	{
-		printf("ret not found in functions:%llx\n", MBB->getInsts()->getBeginAddr());
-	}
+
+  if (!retFound)
+  {
+	printf("ret not found in functions:%llx\n", MBB->getInsts()->getBeginAddr());
+  }
   return retFound;
 }
 
