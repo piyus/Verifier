@@ -1262,6 +1262,7 @@ static uint8_t FetchIndirectCallTag(MCFunction::const_iterator i, unsigned reg,
 	MCInstPrinter *IP, MCSubtargetInfo const &STI)
 {
 	int numPred = 0;
+	uint8_t val = 0;
 	for (MCBasicBlock::pred_const_iterator si = (*i)->pred_begin(),
 		se = (*i)->pred_end(); si != se; ++si)
 	{
@@ -1278,7 +1279,16 @@ static uint8_t FetchIndirectCallTag(MCFunction::const_iterator i, unsigned reg,
 
 		//IP->printInst(&MI, OS, "", STI);
 		//printf("\nopcode: %x  %s\n", MI.getOpcode(), OS.str().c_str());
+		//test        byte ptr[rax - 8], 10h
 		assert(MI.getOpcode() == X86::TEST8mi);
+
+		assert(MI.getOperand(0).getReg() == reg);
+		assert(MI.getOperand(3).getImm() == -8);
+		assert(MI.getOperand(2).getReg() == 0);
+
+		val = (~(uint8_t)(MI.getOperand(5).getImm())) & 0x1f;
+
+		//printf("Indirect val: %llx addr:%llx\n", val, (*si)->getInsts()->getBeginAddr());
 
 		MI = (*si)->getInsts()->at(numInsn - 1).Inst;
 		//IP->printInst(&MI, OS, "", STI);
@@ -1288,7 +1298,7 @@ static uint8_t FetchIndirectCallTag(MCFunction::const_iterator i, unsigned reg,
 		numPred++;
 	}
 	assert(numPred == 1);
-	return 0;
+	return val;
 }
 
 #define RAX_MASK (1 << RAX_SHIFT)
@@ -1329,13 +1339,14 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 	  (r8Private << R8_SHIFT) |
 	  (r9Private << R9_SHIFT) | 
 	  (1 << R10_SHIFT) |
-	  (1 << R11_SHIFT) |
-	  (1 << RAX_SHIFT);
+	  (1 << R11_SHIFT) /*|
+	  (1 << RAX_SHIFT)*/;
   MCTextAtom *TA = (MCTextAtom*)MBB->getInsts();
   TA->setInput(input);
   bool change;
   int iter;
   bool retFound = false;
+  bool debugThisFunc = false; //(TA->getBeginAddr() == 0x1800C9CB0);
   
   do {
 	  change = false;
@@ -1501,51 +1512,54 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 
 				  if (MD.isCall())
 				  {
-				  	if (opcode == X86::CALL64pcrel32) // direct call
-				  	{
-
-				  	    uint8_t callTag = (*i)->getInsts()->getCallTag();
-						if (callTag == 0xff)
-						{
-							printf("CurAddr:%llx ii:%d output:%x callTag:%hhx getCallTag(out):%hhx\n",
-								(*i)->getInsts()->getBeginAddr(), ii, output, callTag, getCallTag(output));
-							assert(0);
-				  	    //Out << "callTag: " << callTag << " output: " << output << " GetCall: " << getCallTag(output) << "\n";
-				  	    //printf("callTag:%hhx getCallTag:%hhx output:%hx\n", callTag, getCallTag(output), output);
-				  	    //assert((callTag & getCallTag(output) & 0xf) == 0);
-						}
-				  	    if ((callTag & getCallTag(output) & 0xf) != 0)
-				  	    {
-							printf("CurAddr:%llx ii:%d output:%x callTag:%hhx getCallTag(out):%hhx\n",
-								(*i)->getInsts()->getBeginAddr(), ii, output, callTag, getCallTag(output));
-				  	        printf("Call assertion failed!\n");
-							assert(0);
-				  	    }
-						if ((output & CALL_MASK))
-						{
-							printf("CurAddr:%llx ii:%d output:%x\n", (*i)->getInsts()->getBeginAddr(), ii, output);
-							printf("invalid callee saved register!\n");
-							assert(0);
-						}
-				  	    output = afterCall(output, (callTag & 0x10) != 0);
-				  	}
-					else
-					{
-						FetchIndirectCallTag(i, MI.getOperand(0).getReg(), IP, STI);
-						assert(opcode == X86::CALL64r);
-						//printf("Indirect call support comming soon!!\n");
-						return 1;
-					}
+					  uint8_t callTag;
+					  if (opcode == X86::CALL64pcrel32)
+					  {
+						  callTag = (*i)->getInsts()->getCallTag();
+						  if (callTag == 0xff)
+						  {
+							  printf("CurAddr:%llx ii:%d output:%x callTag:%hhx getCallTag(out):%hhx\n",
+								  (*i)->getInsts()->getBeginAddr(), ii, output, callTag, getCallTag(output));
+							  assert(0);
+						  }
+					  }
+					  else
+					  {
+						  assert(opcode == X86::CALL64r);
+						  callTag = FetchIndirectCallTag(i, MI.getOperand(0).getReg(), IP, STI);
+					  }
+					  if ((callTag & getCallTag(output) & 0xf) != 0)
+					  {
+						  printf("CurAddr:%llx ii:%d output:%x callTag:%hhx getCallTag(out):%hhx\n",
+							  (*i)->getInsts()->getBeginAddr(), ii, output, callTag, getCallTag(output));
+						  printf("Call assertion failed!\n");
+						  assert(0);
+					  }
+					  if ((output & CALL_MASK))
+					  {
+						  printf("CurAddr:%llx ii:%d output:%x\n", (*i)->getInsts()->getBeginAddr(), ii, output);
+						  printf("invalid callee saved register!\n");
+						  assert(0);
+					  }
+					  output = afterCall(output, (callTag & 0x10) != 0);
 				  }
 			  }
 		  }
 
+		  if (debugThisFunc)
+		  {
+		  	printf("BB:%llx output:%x\n", (*i)->getInsts()->getBeginAddr(), output);
+		  }
 		  for (MCBasicBlock::succ_const_iterator si = (*i)->succ_begin(),
 			  se = (*i)->succ_end(); si != se; ++si)
 		  {
 			  TA = (MCTextAtom*)(*si)->getInsts();
 			  uint16_t oldInput = !(TA->hasInput()) ? 0 : TA->getInput();
 			  uint16_t newInput = output | oldInput;
+			  if (debugThisFunc)
+			  {
+		  	  	printf("SUCC:%llx old:%x new:%x\n", TA->getBeginAddr(), oldInput, newInput);
+			  }
 			  if (!(TA->hasInput()) || newInput != oldInput)
 			  {
 				  TA->setInput(newInput);

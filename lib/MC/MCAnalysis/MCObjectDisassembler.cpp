@@ -417,7 +417,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 	{
 		break;
 	}
-	//debugThisFunc = (TA->getBeginAddr() == 0x180032990);
+	//debugThisFunc = (TA->getBeginAddr() == 0x1800C9CB0);
 	if (debugThisFunc && totalSize)
 	{
 		debugThisFunc = false;
@@ -448,7 +448,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 	  {
 		  printf("inst: %llx\n", II->Address);
 	  }
-      if (MIA.isTerminator(II->Inst))
+      if (MIA.isTerminator(II->Inst) || II->Inst.getOpcode() == X86::INT3)
 	  {
 		  if (II->Address + II->Size < TA->getEndAddr())
 		  {
@@ -589,7 +589,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
         CurBB.addSucc(BBInfos[LI.Address + LI.Size]);
 	  }
     }
-	else if (!MIA.isTerminator(LI.Inst))
+	else if (!MIA.isTerminator(LI.Inst) && LI.Inst.getOpcode() != X86::INT3)
 	{
 		if (debugThisFunc)
 		{
@@ -776,7 +776,7 @@ MCBasicBlock *MCObjectDisassembler::getBBAt(MCModule *Module, MCFunction *MCFN,
             CallTargets.push_back(BranchTarget);
         }
 
-        if (MIA.isTerminator(Inst))
+        if (MIA.isTerminator(Inst) || Inst.getOpcode() == X86::INT3)
           break;
       }
 	  free(_buf);
@@ -793,7 +793,8 @@ MCBasicBlock *MCObjectDisassembler::getBBAt(MCModule *Module, MCFunction *MCFN,
     // Now we have a basic block atom, add successors.
     // Add the fallthrough block.
     if ((MIA.isConditionalBranch(TA->back().Inst) ||
-         !MIA.isTerminator(TA->back().Inst)) &&
+         !(MIA.isTerminator(TA->back().Inst) || 
+		   TA->back().Inst.getOpcode() == X86::INT3)) &&
         (TA->getEndAddr() + 1 < EndRegion)) {
       BBI->SuccAddrs.push_back(TA->getEndAddr() + 1);
       Worklist.insert(TA->getEndAddr() + 1);
