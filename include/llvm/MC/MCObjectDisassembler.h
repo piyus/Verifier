@@ -53,7 +53,7 @@ public:
   /// what was found in the object file. If withCFG is true, MCFunctions are
   /// created, containing MCBasicBlocks. All text atoms are split to form basic
   /// block atoms, which then each back an MCBasicBlock.
-  MCModule *buildModule(bool withCFG, int start, int end);
+  MCModule *buildModule(bool withCFG, int start);
 
   MCModule *buildEmptyModule();
 
@@ -104,7 +104,7 @@ public:
   /// This is the inverse of getEffectiveLoadAddr.
   virtual uint64_t getOriginalLoadAddr(uint64_t EffectiveAddr);
   /// @}
-  void buildCFG(MCModule *Module, int start, int end);
+  void buildCFG(MCModule *Module, int start);
 
 protected:
   const object::ObjectFile &Obj;

@@ -1079,7 +1079,6 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
   MCTextAtom *TA = (MCTextAtom*)MBB->getInsts();
   TA->setInput(input);
   bool change;
-  int iter;
   bool retFound = false;
   //debugThisFunc = (TA->getBeginAddr() == 0x1800C9CB0);
   
@@ -1372,20 +1371,13 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 //#if 0
   if (1)
   {
-	int batch = 20;
 	int start = 0;
-	int end = 0;
     std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
 
 	while (1)
 	{
-		start = end;
-		end += batch;
-    	std::unique_ptr<MCModule> Mod(OD->buildModule(true, start, end));
-
-		end = start + Mod->Functions.size();
-
-
+    	std::unique_ptr<MCModule> Mod(OD->buildModule(true, start));
+		start += Mod->Functions.size();
 		int success = 0;
 
     	for (MCModule::const_func_iterator FI = Mod->func_begin(),

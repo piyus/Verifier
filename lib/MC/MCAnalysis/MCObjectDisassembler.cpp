@@ -92,12 +92,12 @@ MCModule *MCObjectDisassembler::buildEmptyModule() {
   return Module;
 }
 
-MCModule *MCObjectDisassembler::buildModule(bool withCFG, int start, int end) {
+MCModule *MCObjectDisassembler::buildModule(bool withCFG, int start) {
   MCModule *Module = buildEmptyModule();
 
  buildSectionAtoms(Module);
   if (withCFG)
-    buildCFG(Module, start, end);
+    buildCFG(Module, start);
   return Module;
 }
 
@@ -150,33 +150,22 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 	uint64_t SecSize = *_SecSize;
     if (StartAddr == UnknownAddressOrSize || SecSize == UnknownAddressOrSize)
       continue;
-    //StartAddr = getEffectiveLoadAddr(StartAddr);
-
-	//outs() << "StartAddr: " << StartAddr << "\n";
-
 
     StringRef Contents;
     Section.getContents(Contents);
-    //StringRefMemoryObject memoryObject(Contents, StartAddr);
 	ArrayRef<uint8_t> memoryObject(reinterpret_cast<const uint8_t *>(Contents.data()),
                                    Contents.size());
 
     StringRef SecName;
 	Section.getName(SecName);
-	//outs() << "data: " << isData << " text: " << isText << " -- " << SecName << "\n";
-    // We don't care about things like non-file-backed sections yet.
-	//outs() << "Content.size: " << Contents.size() << " SecSize: " << SecSize << "\n";
     if (Contents.size() != SecSize || !SecSize)
 	{
       continue;
 	}
-    uint64_t EndAddr = StartAddr + SecSize - 1;
-	//outs() << "EndAddr: " << EndAddr << "\n";
 
 	if (isText)
 	{
 		MCTextAtom *Text = nullptr;
-		MCDataAtom *InvalidData = nullptr;
 
 		uint64_t InstSize;
 		bool foundFunc = false;
@@ -217,7 +206,6 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 
 			if (*(uint64_t*)(&data[Index]) == 0x9A9A9A9A9A9A9A9A)
 			{
-				//printf("start func:%llx\n", CurAddr);
 				foundFunc = true;
 				lastInstWasCall = false;
 				InstSize = 16;
@@ -241,8 +229,6 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 						uint64_t Target;
 						if (!Text)
 						{
-							//printf("Creating Text Atom@: %llx\n", CurAddr);
-							//outs() << "Creating Text Atom@ "  << CurAddr << "\n";
 							Text = Module->createTextAtom(CurAddr, CurAddr + InstSize - 1);
 							Text->setName(SecName);
 							Text->setSignature(tag);
@@ -267,7 +253,6 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 							foundFunc = false;
 							Text = nullptr;
 							continue;
-					//		printf("end func:%llx\n", CurAddr);
 						}
 
 						Text->addInst(Inst, InstSize);
@@ -292,30 +277,21 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 							assert(Inst.getOpcode() == X86::CALL64pcrel32 || Inst.getOpcode() == X86::CALL64r);
 						}
 
-						//else
+						assert(!MIA.isReturn(Inst));
+						if (MIA.isUnconditionalBranch(Inst) || Inst.getOpcode() == X86::INT3)
 						{
-							assert(!MIA.isReturn(Inst));
-							if (MIA.isUnconditionalBranch(Inst) || Inst.getOpcode() == X86::INT3)
+							if (CurAddr >= lastSeenBranch)
 							{
-								//printf("Return: CurAddr:%llx LastSeenBranch:%llx\n", CurAddr, lastSeenBranch);
-								if (CurAddr >= lastSeenBranch)
+								if (debugThisFunc)
 								{
-
-									if (debugThisFunc)
-									{
-										printf("found unconditional branch at: %llx lastSeenBranch:%llx\n", 
-												CurAddr, lastSeenBranch);
-									}
-									//printf("Ending Text Atom@: %llx\n", CurAddr);
-									foundFunc = false;
-									Text = nullptr;
-
-						//			printf("end func:%llx\n", CurAddr);
+									printf("found unconditional branch at: %llx lastSeenBranch:%llx\n", 
+											CurAddr, lastSeenBranch);
 								}
+								foundFunc = false;
+								Text = nullptr;
+
 							}
 						}
-
-						InvalidData = nullptr;
 					}
 				}
 				else
@@ -353,7 +329,7 @@ static void RemoveDupsFromAddressVector(MCObjectDisassembler::AddressSetTy &V) {
   V.erase(std::unique(V.begin(), V.end()), V.end());
 }
 
-void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
+void MCObjectDisassembler::buildCFG(MCModule *Module, int start) {
   typedef std::map<uint64_t, BBInfo> BBInfoByAddrTy;
   BBInfoByAddrTy BBInfos;
   AddressSetTy Splits;
@@ -369,7 +345,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 	  _ERROR(_SymAddr);
 	  uint64_t SymAddr = *_SymAddr;
       SymAddr = getEffectiveLoadAddr(SymAddr);
-	  //outs() << "Splits1 " << SymAddr << "\n";
       Calls.push_back(SymAddr);
       Splits.push_back(SymAddr);
     }
@@ -389,28 +364,21 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
   }
 
 
-
+  const size_t MaxFuncSize = (16 << 12); // 16 pages
   int iter = -1;
   uint64_t totalSize = 0, curSize;
   bool debugThisFunc = false;
 
-  //printf("start:%d end:%d\n", start, end);
   // First, determine the basic block boundaries and call targets.
   for (MCModule::atom_iterator AI = Module->atom_begin(),
                                AE = Module->atom_end();
        AI != AE; ++AI) {
     MCTextAtom *TA = dyn_cast<MCTextAtom>(*AI);
     if (!TA) continue;
-	//printf("iter:%d TA:%p\n", iter, TA);
 	iter++;
 	if (iter < start)
 	{
 		continue;
-	}
-	if (iter == end)
-	{
-		//printf("totalSize:%lld\n", totalSize);
-		//break;
 	}
 
 	if (debugThisFunc)
@@ -425,23 +393,23 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 	}
 
 	curSize = TA->getEndAddr() - TA->getBeginAddr();
-	if (curSize > (16 << 12))
+	if (curSize > MaxFuncSize)
 	{
-		printf("Single very large function! %llx %llx\n", TA->getEndAddr(), TA->getBeginAddr());
+		printf("Single very large function! %llx -> %lld\n", 
+			   TA->getBeginAddr(), curSize);
 		continue;
 	}
 	totalSize += curSize;
-	if (totalSize > (16 << 12))
+	if (totalSize > MaxFuncSize)
 	{
 		break;
 	}
 
-
-	//printf("Adding function: %llx to party!\n", TA->getBeginAddr());
 	Funcs.push_back(TA->getBeginAddr());
 
     for (MCTextAtom::const_iterator II = TA->begin(), IE = TA->end();
-         II != IE; ++II) {
+         II != IE; ++II) 
+	{
 	  MCAtom *A;
 	  
 	  if (debugThisFunc == true)
@@ -465,7 +433,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 			  {
 				  printf("Splits terminator : %llx \n", II->Address + II->Size);
 			  }
-			  //printf("Adding target %llx to list!\n", II->Address + II->Size);
 		  }
 	  }
 	  if (MIA.isCall(II->Inst))
@@ -478,24 +445,15 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 	  }
       uint64_t Target;
       if (MIA.evaluateBranch(II->Inst, II->Address, II->Size, Target)) {
-		  //printf("Target: %llx\n", Target);
-		/*if (Target < TA->getBeginAddr() || Target > TA->getEndAddr())
-		{
-			outs() << "PANIC::\n";
-		}*/
         if (MIA.isCall(II->Inst))
 		{
           Calls.push_back(Target);
 		}
-		/*else
-		{
-			printf("Adding target %llx to list!\n", Target);
-		}*/
         Splits.push_back(Target);
-			  if (debugThisFunc)
-			  {
-				  printf("Splits branch : %llx\n", Target);
-			  }
+		if (debugThisFunc)
+		{
+		    printf("Splits branch : %llx\n", Target);
+		}
 
     	A = Module->findAtomContaining(Target);
 		if (!A || !isa<MCTextAtom>(A))
@@ -511,8 +469,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 
   RemoveDupsFromAddressVector(Splits);
   RemoveDupsFromAddressVector(Calls);
-
-  //printf("after removing Dups!\n");
 
   // Split text atoms into basic block atoms.
   for (AddressSetTy::const_iterator SI = Splits.begin(), SE = Splits.end();
@@ -540,8 +496,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
     NewAtom->setName((BBName + ":" + utohexstr(*SI)).str());
   }
 
-  //printf("after splits!\n");
-
   // Compute succs/preds.
   for (MCModule::atom_iterator AI = Module->atom_begin(),
                                AE = Module->atom_end();
@@ -551,27 +505,21 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
     BBInfo &CurBB = BBInfos[TA->getBeginAddr()];
     const MCDecodedInst &LI = TA->back();
 
-	//printf("LI Address:%llx\n", LI.Address);
 	if (MIA.isCall(LI.Inst))
 	{
-		//printf("LI is Call\n");
     	uint64_t Target;
+
     	if (MIA.evaluateBranch(LI.Inst, LI.Address, LI.Size, Target))
 	  	{
 			MCTextAtom *CallA = BBInfos[Target].Atom;
 			assert(CallA && "call traget doesn't have an atom!");
-			//printf("Adding tag to %llx signature:%x\n", TA->getBeginAddr(), CallA->getSignature());
-			//CurBB.setTag(CallA->getTag());
 			CurBB.Atom->setCallTag(CallA->getSignature());
 	  	}
-		else
-		{
-			//printf("Not Adding tag to %llx\n", TA->getBeginAddr());
-		}
 	}
 
     if (MIA.isBranch(LI.Inst)) {
       uint64_t Target;
+
       if (MIA.evaluateBranch(LI.Inst, LI.Address, LI.Size, Target))
 	  {
 		if (debugThisFunc)
@@ -599,10 +547,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 	}
   }
 
-  //printf("after visting atoms!\n");
-
-
-  
   // Create functions and basic blocks.
   for (AddressSetTy::const_iterator CI = Funcs.begin(), CE = Funcs.end();
        CI != CE; ++CI) {
@@ -618,10 +562,10 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
       BBInfo *BBI = Worklist[wi];
       if (!BBI->Atom)
 	  {
-		  if (debugThisFunc)
-		  {
-		  	printf("no ATOM found -- for BBI %p\n", BBI);
-		  }
+		if (debugThisFunc)
+		{
+			printf("no ATOM found -- for BBI %p\n", BBI);
+		}
         continue;
 	  }
 	  if (debugThisFunc)
@@ -629,34 +573,15 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
 	  	printf("Atom going ON: %llx\n", BBI->Atom->getBeginAddr());
 	  }
       BBI->BB = &MCFN.createBlock(*BBI->Atom);
-	  /*if (BBI->hasTag())
-	  {
-		  outs() << "MCBasicBlock adding tag " << BBI->BB->getInsts()->at(0).Address << "\n";
-		  BBI->BB->setTag(BBI->getTag());
-	  }*/
       // Add all predecessors and successors to the worklist.
       for (BBInfoSetTy::iterator SI = BBI->Succs.begin(), SE = BBI->Succs.end();
                                  SI != SE; ++SI)
 	  {
-	  	if (debugThisFunc)
-	  	{
-			if (!(*SI)->Atom)
-			{
-		  			printf("no ATOM found -- for SI : %p\n", SI);
-			}
-	  	}
         Worklist.insert(*SI);
 	  }
       for (BBInfoSetTy::iterator PI = BBI->Preds.begin(), PE = BBI->Preds.end();
                                  PI != PE; ++PI)
 	  {
-	  	if (debugThisFunc)
-	  	{
-			if (!(*PI)->Atom)
-			{
-		  			printf("no ATOM found -- for PI %p\n", PI);
-			}
-	  	}
         Worklist.insert(*PI);
 	  }
     }
@@ -677,8 +602,6 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start, int end) {
           MCBB->addPredecessor((*PI)->BB);
     }
   }
-  //printf("after computing functions!\n");
-  
 }
 
 // Basic idea of the disassembly + discovery:
