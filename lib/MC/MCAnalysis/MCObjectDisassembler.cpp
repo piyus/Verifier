@@ -254,7 +254,7 @@ void MCObjectDisassembler::buildSectionAtoms(MCModule *Module) {
 							{
 								printf("found indirect branch at: %llx\n", CurAddr);
 							}
-							Inst.setOpcode(X86::RET);
+							Inst.setOpcode(X86::CFI_INSTRUCTION);
 							Text->addInst(Inst, InstSize);
 							/* if next instruction is ret it is a stub*/
 							/* FIXME */

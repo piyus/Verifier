@@ -1381,8 +1381,11 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 			  uint16_t opcode = MD.getOpcode();
 			  //isSetA |= (MI.getOpcode() == X86::SETAr);
 
-			  //Out << "iter: " << iter << " output: " << output << "\n";
-			  //printf("iter:%d output:%x\n", iter, output);
+			  if (opcode == X86::CFI_INSTRUCTION)
+			  {
+				  // it is wrapper
+				  return 1;
+			  }
 
 			  if (MD.isReturn() && returningPublic)
 			  {
@@ -1392,6 +1395,12 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 					  assert(0);
 				  }
 				  retFound = true;
+			  }
+
+			  if (opcode == X86::WRGSBASE || opcode == X86::WRGSBASE64 ||
+				  opcode == X86::WRFSBASE || opcode == X86::WRFSBASE64)
+			  {
+				  assert(0);
 			  }
 
 			  if (opcode == X86::XOR8rr || 
