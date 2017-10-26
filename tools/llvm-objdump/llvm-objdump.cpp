@@ -1339,8 +1339,8 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 	  (r8Private << R8_SHIFT) |
 	  (r9Private << R9_SHIFT) | 
 	  (1 << R10_SHIFT) |
-	  (1 << R11_SHIFT) /*|
-	  (1 << RAX_SHIFT)*/;
+	  (1 << R11_SHIFT) |
+	  (1 << RAX_SHIFT);
   MCTextAtom *TA = (MCTextAtom*)MBB->getInsts();
   TA->setInput(input);
   bool change;
