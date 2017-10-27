@@ -336,7 +336,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start) {
   AddressSetTy Calls;
   AddressSetTy Funcs;
 
-  for (const SymbolRef &Symbol : Obj.symbols()) {
+  /*for (const SymbolRef &Symbol : Obj.symbols()) {
     Expected<SymbolRef::Type> _SymType = Symbol.getType();
 	_ERROR(_SymType);
 	SymbolRef::Type SymType = *_SymType;
@@ -348,7 +348,7 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start) {
       Calls.push_back(SymAddr);
       Splits.push_back(SymAddr);
     }
-  }
+  }*/
 
   assert(Module->func_begin() == Module->func_end()
          && "Module already has a CFG!");
