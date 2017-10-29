@@ -1015,10 +1015,16 @@ static uint8_t FetchIndirectCallTag(MCFunction::const_iterator i,
 		unsigned opcode;
 		assert(numInsn >= 2);
 		MCInst MI = (*si)->getInsts()->at(numInsn - 2).Inst;
-		//std::string Str;
-		//raw_string_ostream OS(Str);
-		//IP->printInst(&MI, OS, "", STI);
-		//printf("\nopcode: %x  %s\n", MI.getOpcode(), OS.str().c_str());
+		/*std::string Str;
+		raw_string_ostream OS(Str);
+		IP->printInst(&MI, OS, "", STI);
+		printf("\nopcode: %x  %s\n", MI.getOpcode(), OS.str().c_str());
+		printf("\n ADDR: %llx\n", (*si)->getInsts()->getBeginAddr());*/
+
+		if (MI.getOpcode() != X86::TEST8mi)
+		{
+			return 0xff;
+		}
 
 		//test        byte ptr[rax - 8], 10h
 		assert(MI.getOpcode() == X86::TEST8mi);
@@ -1268,7 +1274,17 @@ static int emitDOTFile(const char *FileName, const MCFunction &f,
 					  else
 					  {
 						  assert(opcode == X86::CALL64r);
-						  callTag = FetchIndirectCallTag(i, MI.getOperand(0).getReg(), IP, STI);
+						  callTag = (*i)->getInsts()->getCallTag();
+						  if (callTag == 0xff)
+						  {
+							  callTag = FetchIndirectCallTag(i, MI.getOperand(0).getReg(), IP, STI);
+							  if (callTag == 0xff)
+							  {
+								  printf("Not able to verify indirect call at CurAddr:%llx ii:%d output:%x \n",
+									  (*i)->getInsts()->getBeginAddr(), ii, output);
+								  return 1;
+							  }
+						  }
 					  }
 					  if ((callTag & getCallTag(output) & 0xf) != 0)
 					  {
@@ -1372,7 +1388,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   if (1)
   {
 	int start = 0;
-    std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA));
+    std::unique_ptr<MCObjectDisassembler> OD(new MCObjectDisassembler(*Obj, *DisAsm, *MIA, *MII));
 
 	while (1)
 	{

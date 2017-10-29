@@ -42,8 +42,9 @@ const uint64_t UnknownAddressOrSize = ~0ULL;
 
 MCObjectDisassembler::MCObjectDisassembler(const ObjectFile &Obj,
                                            const MCDisassembler &Dis,
-                                           const MCInstrAnalysis &MIA)
-    : Obj(Obj), Dis(Dis), MIA(MIA), MOS(nullptr) {}
+                                           const MCInstrAnalysis &MIA,
+										   const MCInstrInfo &MII)
+    : Obj(Obj), Dis(Dis), MIA(MIA), MII(MII), MOS(nullptr) {}
 
 uint64_t MCObjectDisassembler::getEntrypoint() {
   for (const SymbolRef &Symbol : Obj.symbols()) {
@@ -329,7 +330,62 @@ static void RemoveDupsFromAddressVector(MCObjectDisassembler::AddressSetTy &V) {
   V.erase(std::unique(V.begin(), V.end()), V.end());
 }
 
-void MCObjectDisassembler::buildCFG(MCModule *Module, int start) {
+uint64_t MCObjectDisassembler::TryFetchAddrFromBB(MCTextAtom *TA, unsigned reg)
+{
+
+	assert(TA->begin() != TA->end());
+	MCTextAtom::const_iterator II = TA->end();
+
+	II--;
+
+	if (TA->begin() == II)
+	{
+		return 0;
+	}
+	
+	do
+	{
+		II--;
+		MCInst I = II->Inst;
+		unsigned opcode = I.getOpcode();
+		unsigned r;
+		//printf("OPCODE: %d %x\n", opcode, opcode);
+
+		if (opcode == X86::MOV64ri || opcode == X86::MOV64ri32)
+		{
+			if (I.getOperand(0).getReg() == reg)
+			{
+				return I.getOperand(1).getImm();
+			}
+		}
+
+		MCInstrDesc MD = MII.get(opcode);
+		const MCPhysReg *ImpDefs = MD.getImplicitDefs();
+
+		for (unsigned j = 0; j < MD.getNumImplicitDefs(); j++)
+		{
+			// FIXME: use getX86GPR
+			if (ImpDefs[j] == reg)
+			{
+				return 0;
+			}
+		}
+
+		for (unsigned j = 0; j < MD.NumDefs; j++)
+		{
+			MCOperand op = I.getOperand(j);
+			// FIXME:: use getX86GPR
+			if (op.isReg() && op.getReg() == reg)
+			{
+				return 0;
+			}
+		}
+	} while (II != TA->begin());
+	return 0;
+}
+
+void MCObjectDisassembler::buildCFG(MCModule *Module, int start)
+{
   typedef std::map<uint64_t, BBInfo> BBInfoByAddrTy;
   BBInfoByAddrTy BBInfos;
   AddressSetTy Splits;
@@ -509,12 +565,22 @@ void MCObjectDisassembler::buildCFG(MCModule *Module, int start) {
 	{
     	uint64_t Target;
 
+		//printf("CALL AT! %llx\n", TA->getBeginAddr());
     	if (MIA.evaluateBranch(LI.Inst, LI.Address, LI.Size, Target))
 	  	{
 			MCTextAtom *CallA = BBInfos[Target].Atom;
 			assert(CallA && "call traget doesn't have an atom!");
 			CurBB.Atom->setCallTag(CallA->getSignature());
 	  	}
+		else {
+			Target = TryFetchAddrFromBB(TA, LI.Inst.getOperand(0).getReg());
+			if (Target)
+			{
+				MCTextAtom *CallA = BBInfos[Target].Atom;
+				assert(CallA && "call traget doesn't have an atom!");
+				CurBB.Atom->setCallTag(CallA->getSignature());
+			}
+		}
 	}
 
     if (MIA.isBranch(LI.Inst)) {

@@ -34,6 +34,8 @@ class MCFunction;
 class MCInstrAnalysis;
 class MCModule;
 class MCObjectSymbolizer;
+class MCTextAtom;
+class MCInstrInfo;
 
 /// \brief Disassemble an ObjectFile to an MCModule and MCFunctions.
 /// This class builds on MCDisassembler to disassemble whole sections, creating
@@ -44,7 +46,8 @@ class MCObjectDisassembler {
 public:
   MCObjectDisassembler(const object::ObjectFile &Obj,
                        const MCDisassembler &Dis,
-                       const MCInstrAnalysis &MIA);
+                       const MCInstrAnalysis &MIA,
+					   const MCInstrInfo &MII);
   virtual ~MCObjectDisassembler() {}
 
   /// \brief Build an MCModule, creating atoms and optionally functions.
@@ -76,6 +79,9 @@ public:
   void setSymbolizer(MCObjectSymbolizer *ObjectSymbolizer) {
     MOS = ObjectSymbolizer;
   }
+
+  uint64_t TryFetchAddrFromBB(MCTextAtom * TA, unsigned reg);
+
 
   /// \brief Get the effective address of the entrypoint, or 0 if there is none.
   virtual uint64_t getEntrypoint();
@@ -110,6 +116,7 @@ protected:
   const object::ObjectFile &Obj;
   const MCDisassembler &Dis;
   const MCInstrAnalysis &MIA;
+  const MCInstrInfo &MII;
   MCObjectSymbolizer *MOS;
 
   /// \brief The fallback memory region, outside the object file.
